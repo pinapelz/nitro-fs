@@ -3,7 +3,8 @@ package com.pinapelz;
 import io.github.cdimascio.dotenv.Dotenv;
 import net.dv8tion.jda.api.JDABuilder;
 import net.dv8tion.jda.api.requests.GatewayIntent;
-import static spark.Spark.*;
+
+import static com.pinapelz.frontend.AppKt.startFrontend;
 
 public class Main
 {
@@ -28,7 +29,7 @@ public class Main
 
     public static void main(String[] args) throws Exception{
         startBot();
-        get("/hello", (req, res) -> "Hello World");
+        startFrontend();
     }
 
 
