@@ -215,7 +215,6 @@ public class Database {
     }
 
     public boolean deleteDirectory(int directoryId) throws SQLException {
-        // Check if directory has files
         String checkSql = """
         SELECT COUNT(*) as file_count
         FROM files

@@ -202,8 +202,9 @@ fun startFrontend(retriever: Retriever, fileSystem: FileSystem) {
     app.get("/fetch") { ctx ->
         val fileId = ctx.queryParam("fileId")
         val fileMetadata = fileSystem.getFileById(Integer.parseInt(fileId));
-        print(fileMetadata[1])
-        ctx.redirect(retriever.getFileUrl(fileMetadata[0], fileMetadata[1], fileMetadata[2]));
+        print("Retrieving: " + fileMetadata.fileName)
+        ctx.redirect(retriever.getFileUrl(fileMetadata.channelId.toString(),
+            fileMetadata.messageId.toString(), fileMetadata.fileName));
     }
     app.start(7070)
 }

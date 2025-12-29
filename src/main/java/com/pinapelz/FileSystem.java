@@ -5,14 +5,20 @@ import net.dv8tion.jda.api.entities.Message;
 import java.sql.ResultSet;
 import java.sql.SQLException;
 
+
 public class FileSystem {
     private Database database;
     public FileSystem(String dbHost, String dbUser, String dbPass, String dbName){
         database = new Database(dbHost, dbUser, dbPass, dbName);
     }
 
-    public String[] getFileById(int fileId){
-        return database.getFileById(fileId);
+    public DiscordFilePath getFileById(int fileId){
+        String[] rawDiscordFilePath = database.getFileById(fileId);
+        DiscordFilePath discPath = new DiscordFilePath();
+        discPath.channelId = Long.parseLong(rawDiscordFilePath[0]);
+        discPath.messageId = Long.parseLong(rawDiscordFilePath[1]);
+        discPath.fileName = rawDiscordFilePath[3];
+        return discPath;
     }
 
     public void createNewFile(String channelId, String messageId, int directoryId, String description, Message.Attachment attachment){
@@ -26,16 +32,11 @@ public class FileSystem {
         }
     }
 
-    // Backward compatibility - defaults to root directory (ID 1)
-    public void createNewFile(String channelId, String messageId, String description, Message.Attachment attachment){
-        createNewFile(channelId, messageId, 1, description, attachment);
-    }
     public ResultSet getFilesByDirectoryIdFiltered(int directoryId, String search, String mimeTypeFilter, String sortBy) {
         return database.getFilesByDirectoryId(directoryId, search, mimeTypeFilter, sortBy);
     }
 
     public int findOrCreateDirectory(String path) throws SQLException {
-        // Try to find existing directory
         ResultSet rs = getAllDirectories();
         while (rs.next()) {
             if (path.equals(rs.getString("path"))) {
@@ -46,7 +47,6 @@ public class FileSystem {
         }
         rs.close();
 
-        // Create new directory if not found
         return createDirectory(path);
     }
 
