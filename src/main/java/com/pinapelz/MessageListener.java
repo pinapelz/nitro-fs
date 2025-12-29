@@ -9,9 +9,9 @@ public class MessageListener extends ListenerAdapter {
 
     private FileSystem fileSystem;
 
-    public MessageListener(String dbHost, String dbUser, String dbPass, String dbName){
-        fileSystem = new FileSystem(dbHost, dbUser, dbPass, dbName);
 
+    public MessageListener(FileSystem fileSystem){
+        this.fileSystem = fileSystem;
     }
 
     @Override
@@ -25,7 +25,7 @@ public class MessageListener extends ListenerAdapter {
         if(!message.getAttachments().isEmpty()){
             System.out.println("Attachment Received! Filing this away now...");
             for(Message.Attachment attachment : message.getAttachments()){
-                fileSystem.createNewFile(message.getChannelId(), message.getChannelId(), content, attachment);
+                fileSystem.createNewFile(message.getChannelId(), message.getId(), content, attachment);
             }
         }
 

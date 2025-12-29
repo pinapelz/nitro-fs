@@ -57,4 +57,35 @@ public class Database {
         ps.executeUpdate();
 
     }
+
+    public String[] getFileById(int fileId) {
+        String sql = """
+        SELECT
+            disc_channel_id,
+            disc_message_id,
+            file_name
+        FROM files
+        WHERE file_id = ?
+    """;
+
+        try (PreparedStatement ps = conn.prepareStatement(sql)) {
+            ps.setInt(1, fileId);
+
+            try (ResultSet rs = ps.executeQuery()) {
+                if (!rs.next()) {
+                    throw new RuntimeException("File not found for id=" + fileId);
+                }
+
+                String channelId = rs.getString("disc_channel_id");
+                String messageId = rs.getString("disc_message_id");
+                String fileName  = rs.getString("file_name");
+
+                return new String[]{ channelId, messageId, fileName };
+            }
+
+        } catch (SQLException e) {
+            throw new RuntimeException("Failed to fetch file metadata", e);
+        }
+    }
+
 }

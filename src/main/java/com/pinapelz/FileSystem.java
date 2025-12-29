@@ -10,7 +10,11 @@ public class FileSystem {
         database = new Database(dbHost, dbUser, dbPass, dbName);
     }
 
-    public void createNewFile(String messageId, String channelId, String description, Message.Attachment attachment){
+    public String[] getFileById(int fileId){
+        return database.getFileById(fileId);
+    }
+
+    public void createNewFile(String channelId, String messageId, String description, Message.Attachment attachment){
         int fileSize = attachment.getSize();
         String filename = attachment.getFileName();
         String mimeType = attachment.getContentType();
