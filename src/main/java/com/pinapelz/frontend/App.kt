@@ -1,22 +1,21 @@
 package com.pinapelz.frontend
 
-import com.pinapelz.frontend.HtmlTemplates
-
 import io.javalin.Javalin
-import io.javalin.http.staticfiles.Location
 import com.pinapelz.Retriever
 import com.pinapelz.FileSystem
 import java.sql.ResultSet
 import java.text.SimpleDateFormat
 
 fun startFrontend(retriever: Retriever, fileSystem: FileSystem) {
-    val app = Javalin.create {
-        it.staticFiles.add("/public", Location.CLASSPATH)
-    }
+    val app = Javalin.create{};
 
     app.get("/") { ctx ->
         val directoryId = ctx.queryParam("dir")?.toIntOrNull() ?: 1
         ctx.html(generateMainHtml(directoryId))
+    }
+
+    app.get("/splitter") { ctx ->
+        ctx.html(generateFileSplitterHtml())
     }
 
     app.get("/api/directories") { ctx ->
@@ -62,7 +61,7 @@ fun startFrontend(retriever: Retriever, fileSystem: FileSystem) {
         val sortBy = ctx.queryParam("sortBy") ?: "created_at"
 
         val files = mutableListOf<Map<String, Any>>()
-        val rs: ResultSet = fileSystem.getFilesByDirectoryIdFiltered(directoryId, search, mimeTypeFilter, sortBy)
+        val rs: ResultSet = fileSystem.getFilesByDirectoryId(directoryId, search, mimeTypeFilter, sortBy)
         val dateFormat = SimpleDateFormat("yyyy-MM-dd HH:mm:ss")
 
         while (rs.next()) {
@@ -113,7 +112,6 @@ fun startFrontend(retriever: Retriever, fileSystem: FileSystem) {
 
         val trimmedPath = path.trim()
 
-        // Server-side validation
         val validationError = validateDirectoryName(trimmedPath)
         if (validationError != null) {
             ctx.status(400).json(mapOf(
@@ -212,7 +210,7 @@ fun startFrontend(retriever: Retriever, fileSystem: FileSystem) {
 }
 
 fun validateDirectoryName(path: String): String? {
-    if (path.length < 1 || path.length > 100) {
+    if (path.length !in 1..100) {
         return "Directory name must be 1-100 characters long"
     }
     val invalidChars = Regex("[<>:\"/\\\\|?*\\x00-\\x1f]")
@@ -250,4 +248,8 @@ fun formatFileSize(bytes: Long): String {
 
 fun generateFileTableHtml(files: List<Map<String, Any>>, search: String = "", mimeTypeFilter: String = ""): String {
     return HtmlTemplates.generateFileTable(files, search, mimeTypeFilter)
+}
+
+fun generateFileSplitterHtml(): String {
+    return HtmlTemplates.generateFileSplitterPage()
 }

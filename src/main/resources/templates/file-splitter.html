@@ -1,0 +1,980 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>nitro-fs - File Splitter</title>
+    <link href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0/css/all.min.css" rel="stylesheet">
+    <script src="https://unpkg.com/htmx.org@1.9.10"></script>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        body {
+            background-color: #36393f;
+            color: #dcddde;
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+            font-size: 14px;
+            line-height: 1.4;
+        }
+
+        .app-container {
+            min-height: 100vh;
+            display: flex;
+            flex-direction: column;
+        }
+
+        .header {
+            background-color: #2f3136;
+            padding: 12px 20px;
+            border-bottom: 1px solid #202225;
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            position: sticky;
+            top: 0;
+            z-index: 100;
+        }
+
+        .header-left {
+            display: flex;
+            align-items: center;
+            gap: 12px;
+        }
+
+        .header-title {
+            font-size: 16px;
+            font-weight: 600;
+            color: #ffffff;
+            display: flex;
+            align-items: center;
+            gap: 8px;
+        }
+
+        .header-subtitle {
+            font-size: 12px;
+            color: #72767d;
+        }
+
+        .header-actions {
+            display: flex;
+            gap: 8px;
+        }
+
+        .btn {
+            background-color: transparent;
+            border: none;
+            color: #b9bbbe;
+            padding: 6px 12px;
+            border-radius: 4px;
+            font-size: 12px;
+            cursor: pointer;
+            transition: all 0.2s;
+            display: flex;
+            align-items: center;
+            gap: 4px;
+            text-decoration: none;
+        }
+
+        .btn:hover {
+            background-color: #40444b;
+            color: #ffffff;
+        }
+
+        .btn-primary {
+            background-color: #5865f2;
+            color: #ffffff;
+        }
+
+        .btn-primary:hover {
+            background-color: #4752c4;
+        }
+
+        .btn-success {
+            background-color: #43b581;
+            color: #ffffff;
+        }
+
+        .btn-success:hover {
+            background-color: #369870;
+        }
+
+        .btn:disabled {
+            opacity: 0.6;
+            cursor: not-allowed;
+        }
+
+        .btn:disabled:hover {
+            background-color: transparent;
+            color: #b9bbbe;
+        }
+
+        .btn-primary:disabled:hover {
+            background-color: #5865f2;
+            color: #ffffff;
+        }
+
+        .main-content {
+            flex: 1;
+            padding: 20px;
+            overflow-y: auto;
+            max-width: 1200px;
+            margin: 0 auto;
+            width: 100%;
+        }
+
+        .page-header {
+            text-align: center;
+            margin-bottom: 40px;
+        }
+
+        .page-title {
+            font-size: 28px;
+            font-weight: 700;
+            color: #ffffff;
+            margin-bottom: 8px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            gap: 12px;
+        }
+
+        .page-description {
+            color: #72767d;
+            font-size: 16px;
+            line-height: 1.5;
+        }
+
+        .splitter-container {
+            display: grid;
+            gap: 24px;
+            grid-template-columns: 1fr;
+        }
+
+        .card {
+            background-color: #2f3136;
+            border: 1px solid #202225;
+            border-radius: 8px;
+            padding: 24px;
+        }
+
+        .card-header {
+            display: flex;
+            align-items: center;
+            gap: 8px;
+            margin-bottom: 16px;
+        }
+
+        .card-title {
+            font-size: 18px;
+            font-weight: 600;
+            color: #ffffff;
+        }
+
+        .card-icon {
+            color: #5865f2;
+            font-size: 20px;
+        }
+
+        .upload-area {
+            border: 2px dashed #40444b;
+            border-radius: 8px;
+            padding: 40px 20px;
+            text-align: center;
+            transition: all 0.2s;
+            cursor: pointer;
+            position: relative;
+            overflow: hidden;
+        }
+
+        .upload-area:hover {
+            border-color: #5865f2;
+            background-color: rgba(88, 101, 242, 0.1);
+        }
+
+        .upload-area.dragover {
+            border-color: #5865f2;
+            background-color: rgba(88, 101, 242, 0.2);
+        }
+
+        .upload-icon {
+            font-size: 48px;
+            color: #72767d;
+            margin-bottom: 16px;
+        }
+
+        .upload-text {
+            font-size: 16px;
+            color: #dcddde;
+            margin-bottom: 8px;
+        }
+
+        .upload-subtext {
+            font-size: 12px;
+            color: #72767d;
+        }
+
+        .file-input {
+            position: absolute;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            opacity: 0;
+            cursor: pointer;
+        }
+
+        .selected-file {
+            display: none;
+            background-color: #36393f;
+            border-radius: 6px;
+            padding: 16px;
+            margin-top: 16px;
+        }
+
+        .selected-file.visible {
+            display: block;
+        }
+
+        .file-info {
+            display: flex;
+            align-items: center;
+            gap: 12px;
+        }
+
+        .file-icon {
+            font-size: 24px;
+            color: #5865f2;
+        }
+
+        .file-details h4 {
+            color: #ffffff;
+            margin-bottom: 4px;
+        }
+
+        .file-meta {
+            font-size: 12px;
+            color: #72767d;
+        }
+
+        .form-group {
+            margin-bottom: 20px;
+        }
+
+        .form-label {
+            display: block;
+            font-size: 14px;
+            font-weight: 500;
+            color: #dcddde;
+            margin-bottom: 6px;
+        }
+
+        .form-input {
+            width: 100%;
+            background-color: #40444b;
+            border: 1px solid #202225;
+            border-radius: 4px;
+            padding: 10px 12px;
+            color: #dcddde;
+            font-size: 14px;
+            outline: none;
+            transition: border-color 0.2s;
+        }
+
+        .form-input:focus {
+            border-color: #5865f2;
+        }
+
+        .form-input::placeholder {
+            color: #72767d;
+        }
+
+        .form-input:disabled {
+            background-color: #202225;
+            color: #72767d;
+            cursor: not-allowed;
+            opacity: 0.6;
+        }
+
+        .form-input:disabled::placeholder {
+            color: #4f545c;
+        }
+
+        .form-row {
+            display: grid;
+            grid-template-columns: 1fr 1fr;
+            gap: 16px;
+        }
+
+        .form-help {
+            font-size: 12px;
+            color: #72767d;
+            margin-top: 4px;
+        }
+
+        .split-options {
+            display: flex;
+            gap: 12px;
+            margin-bottom: 16px;
+        }
+
+        .radio-group {
+            display: flex;
+            align-items: center;
+            gap: 6px;
+        }
+
+        .radio-input {
+            margin: 0;
+        }
+
+        .radio-label {
+            margin: 0;
+            font-size: 14px;
+            color: #dcddde;
+            cursor: pointer;
+        }
+
+        .radio-input:disabled {
+            cursor: not-allowed;
+            opacity: 0.6;
+        }
+
+        .radio-input:disabled + .radio-label {
+            color: #72767d;
+            cursor: not-allowed;
+            opacity: 0.6;
+        }
+
+        .size-input-group {
+            display: flex;
+            align-items: center;
+            gap: 8px;
+        }
+
+        .size-input {
+            flex: 1;
+        }
+
+        .size-unit {
+            background-color: #40444b;
+            border: 1px solid #202225;
+            border-radius: 4px;
+            padding: 10px 12px;
+            color: #dcddde;
+            font-size: 14px;
+            outline: none;
+        }
+
+        .size-unit:disabled {
+            background-color: #202225;
+            color: #72767d;
+            cursor: not-allowed;
+            opacity: 0.6;
+        }
+
+        .progress-container {
+            display: none;
+            margin-top: 24px;
+        }
+
+        .progress-container.visible {
+            display: block;
+        }
+
+        .progress-bar {
+            width: 100%;
+            height: 8px;
+            background-color: #40444b;
+            border-radius: 4px;
+            overflow: hidden;
+            margin-bottom: 12px;
+        }
+
+        .progress-fill {
+            height: 100%;
+            background-color: #5865f2;
+            width: 0%;
+            transition: width 0.3s ease;
+        }
+
+        .progress-text {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            font-size: 12px;
+            color: #72767d;
+        }
+
+        .results-container {
+            display: none;
+        }
+
+        .results-container.visible {
+            display: block;
+        }
+
+        .part-item {
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            padding: 12px 16px;
+            background-color: #36393f;
+            border-radius: 6px;
+            margin-bottom: 8px;
+        }
+
+        .part-info {
+            display: flex;
+            align-items: center;
+            gap: 12px;
+        }
+
+        .part-number {
+            background-color: #5865f2;
+            color: #ffffff;
+            padding: 4px 8px;
+            border-radius: 12px;
+            font-size: 10px;
+            font-weight: 600;
+            min-width: 24px;
+            text-align: center;
+        }
+
+        .part-details {
+            flex: 1;
+        }
+
+        .part-name {
+            color: #ffffff;
+            font-weight: 500;
+            margin-bottom: 2px;
+        }
+
+        .part-size {
+            color: #72767d;
+            font-size: 12px;
+        }
+
+        .part-actions {
+            display: flex;
+            gap: 8px;
+        }
+
+        .btn-download {
+            background-color: #43b581;
+            color: #ffffff;
+            border: none;
+            padding: 6px 12px;
+            border-radius: 4px;
+            font-size: 12px;
+            cursor: pointer;
+            transition: all 0.2s;
+            text-decoration: none;
+            display: flex;
+            align-items: center;
+            gap: 4px;
+        }
+
+        .btn-download:hover {
+            background-color: #369870;
+        }
+
+        .alert {
+            padding: 12px 16px;
+            border-radius: 6px;
+            margin-bottom: 16px;
+            display: flex;
+            align-items: center;
+            gap: 8px;
+        }
+
+        .alert-success {
+            background-color: rgba(67, 181, 129, 0.1);
+            border: 1px solid #43b581;
+            color: #43b581;
+        }
+
+        .alert-error {
+            background-color: rgba(240, 71, 71, 0.1);
+            border: 1px solid #f04747;
+            color: #f04747;
+        }
+
+        .alert-info {
+            background-color: rgba(88, 101, 242, 0.1);
+            border: 1px solid #5865f2;
+            color: #5865f2;
+        }
+
+        .loading-spinner {
+            animation: spin 1s linear infinite;
+        }
+
+        @keyframes spin {
+            from { transform: rotate(0deg); }
+            to { transform: rotate(360deg); }
+        }
+
+        .download-all {
+            margin-top: 16px;
+            padding-top: 16px;
+            border-top: 1px solid #202225;
+        }
+
+        @media (max-width: 768px) {
+            .form-row {
+                grid-template-columns: 1fr;
+            }
+
+            .split-options {
+                flex-direction: column;
+                align-items: flex-start;
+            }
+
+            .part-item {
+                flex-direction: column;
+                align-items: flex-start;
+                gap: 12px;
+            }
+
+            .part-actions {
+                width: 100%;
+                justify-content: flex-end;
+            }
+        }
+    </style>
+</head>
+<body>
+    <div class="app-container">
+        <header class="header">
+            <div class="header-left">
+                <div class="header-title">
+                    <i class="fab fa-discord"></i>
+                    nitro-fs
+                </div>
+                <div class="header-subtitle"># file splitter</div>
+            </div>
+            <div class="header-actions">
+                <a href="/" class="btn">
+                    <i class="fas fa-arrow-left"></i>
+                    back to files
+                </a>
+            </div>
+        </header>
+
+        <main class="main-content">
+            <div class="page-header">
+                <h1 class="page-title">
+                    <i class="fas fa-cut"></i>
+                    File Splitter
+                </h1>
+                <p class="page-description">
+                    For large files that won't fit into the upload limit
+                </p>
+            </div>
+
+            <div class="splitter-container">
+                <div class="card">
+                    <div class="card-header">
+                        <i class="fas fa-upload card-icon"></i>
+                        <h2 class="card-title">Select File</h2>
+                    </div>
+
+                    <div class="upload-area" id="upload-area">
+                        <input type="file" class="file-input" id="file-input" accept="*/*">
+                        <div class="upload-content">
+                            <i class="fas fa-cloud-upload-alt upload-icon"></i>
+                            <div class="upload-text">Click to select a file or drag and drop</div>
+                        </div>
+                    </div>
+
+                    <div class="selected-file" id="selected-file">
+                        <div class="file-info">
+                            <i class="fas fa-file file-icon" id="file-icon"></i>
+                            <div class="file-details">
+                                <h4 id="file-name">No file selected</h4>
+                                <div class="file-meta">
+                                    <span id="file-size">0 bytes</span> • 
+                                    <span id="file-type">unknown</span>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+
+                <div class="card">
+                    <div class="card-header">
+                        <i class="fas fa-cog card-icon"></i>
+                        <h2 class="card-title">Split Configuration</h2>
+                    </div>
+
+                    <form id="split-form">
+                        <div class="split-options">
+                            <div class="radio-group">
+                                <input type="radio" id="split-by-size" name="split-method" value="size" class="radio-input" checked>
+                                <label for="split-by-size" class="radio-label">Split by size</label>
+                            </div>
+                            <div class="radio-group">
+                                <input type="radio" id="split-by-parts" name="split-method" value="parts" class="radio-input">
+                                <label for="split-by-parts" class="radio-label">Split into parts</label>
+                            </div>
+                        </div>
+
+                        <div class="form-group">
+                            <div class="radio-group">
+                                <input type="checkbox" id="upload-webhook" class="radio-input">
+                                <label for="upload-webhook" class="radio-label">
+                                    <i class="fas fa-webhook" style="margin-right: 4px; color: #5865f2;"></i>
+                                    Upload via Webhook (locks to 25MB per part)
+                                </label>
+                            </div>
+                            <div class="form-help" id="webhook-help" style="display: none; margin-top: 8px; padding: 8px 12px; background-color: rgba(88, 101, 242, 0.1); border: 1px solid #5865f2; border-radius: 4px;">
+                                <i class="fas fa-info-circle" style="margin-right: 6px; color: #5865f2;"></i>
+                                Webhook mode is active. File will be split into exactly 25MB parts for Discord upload compatibility.
+                            </div>
+                        </div>
+
+
+
+                        <div id="size-config" class="form-group">
+                            <label class="form-label">Size per part</label>
+                            <div class="size-input-group">
+                                <input type="number" class="form-input size-input" id="part-size" value="25" min="1" max="100" placeholder="25">
+                                <select class="size-unit" id="size-unit">
+                                    <option value="MB" selected>MB</option>
+                                    <option value="KB">KB</option>
+                                    <option value="GB">GB</option>
+                                </select>
+                            </div>
+                        </div>
+
+                        <div id="parts-config" class="form-group" style="display: none;">
+                            <label for="num-parts" class="form-label">Number of parts</label>
+                            <input type="number" class="form-input" id="num-parts" value="5" min="2" max="100" placeholder="5">
+                        </div>
+
+                        <div class="form-group">
+                            <label for="file-prefix" class="form-label">File prefix (optional)</label>
+                            <input type="text" class="form-input" id="file-prefix" placeholder="my-file">
+                            <div class="form-help">Parts will be named: [prefix].part001.nitro, [prefix].part002.nitro, etc.</div>
+                        </div>
+
+                        <button type="submit" class="btn btn-primary" id="split-button" disabled>
+                            <i class="fas fa-cut"></i>
+                            Split File
+                        </button>
+                    </form>
+
+                    <div class="progress-container" id="progress-container">
+                        <div class="progress-bar">
+                            <div class="progress-fill" id="progress-fill"></div>
+                        </div>
+                        <div class="progress-text">
+                            <span id="progress-status">Processing...</span>
+                            <span id="progress-percent">0%</span>
+                        </div>
+                    </div>
+                </div>
+
+                <div class="card results-container" id="results-container">
+                    <div class="card-header">
+                        <i class="fas fa-download card-icon"></i>
+                        <h2 class="card-title">Download Parts</h2>
+                    </div>
+
+                    <div id="results-content">
+                        <!-- Results will be populated here -->
+                    </div>
+
+                    <div class="download-all">
+                        <button class="btn btn-success" id="download-all-btn">
+                            <i class="fas fa-download"></i>
+                            Download All Parts
+                        </button>
+                    </div>
+                </div>
+            </div>
+        </main>
+    </div>
+
+    <script>
+        // File handling
+        const fileInput = document.getElementById('file-input');
+        const uploadArea = document.getElementById('upload-area');
+        const selectedFile = document.getElementById('selected-file');
+        const splitButton = document.getElementById('split-button');
+        const splitForm = document.getElementById('split-form');
+        const progressContainer = document.getElementById('progress-container');
+        const resultsContainer = document.getElementById('results-container');
+
+        let currentFile = null;
+
+        // Upload area drag and drop
+        uploadArea.addEventListener('dragover', (e) => {
+            e.preventDefault();
+            uploadArea.classList.add('dragover');
+        });
+
+        uploadArea.addEventListener('dragleave', () => {
+            uploadArea.classList.remove('dragover');
+        });
+
+        uploadArea.addEventListener('drop', (e) => {
+            e.preventDefault();
+            uploadArea.classList.remove('dragover');
+            const files = e.dataTransfer.files;
+            if (files.length > 0) {
+                handleFileSelect(files[0]);
+            }
+        });
+
+        fileInput.addEventListener('change', (e) => {
+            if (e.target.files.length > 0) {
+                handleFileSelect(e.target.files[0]);
+            }
+        });
+
+        function handleFileSelect(file) {
+            currentFile = file;
+            
+            // Update file display
+            document.getElementById('file-name').textContent = file.name;
+            document.getElementById('file-size').textContent = formatFileSize(file.size);
+            document.getElementById('file-type').textContent = file.type || 'unknown';
+            
+            // Update file icon based on type
+            const iconElement = document.getElementById('file-icon');
+            iconElement.className = 'fas ' + getFileIcon(file.type) + ' file-icon';
+            
+            // Auto-populate prefix if empty
+            const prefixInput = document.getElementById('file-prefix');
+            if (!prefixInput.value) {
+                const nameWithoutExt = file.name.replace(/\.[^/.]+$/, '');
+                prefixInput.value = nameWithoutExt;
+            }
+            
+            selectedFile.classList.add('visible');
+            splitButton.disabled = false;
+        }
+
+        function formatFileSize(bytes) {
+            if (bytes === 0) return '0 bytes';
+            const k = 1024;
+            const sizes = ['bytes', 'KB', 'MB', 'GB'];
+            const i = Math.floor(Math.log(bytes) / Math.log(k));
+            return parseFloat((bytes / Math.pow(k, i)).toFixed(1)) + ' ' + sizes[i];
+        }
+
+        function getFileIcon(mimeType) {
+            if (!mimeType) return 'fa-file';
+            if (mimeType.startsWith('image/')) return 'fa-file-image';
+            if (mimeType.startsWith('video/')) return 'fa-file-video';
+            if (mimeType.startsWith('audio/')) return 'fa-file-audio';
+            if (mimeType.includes('pdf')) return 'fa-file-pdf';
+            if (mimeType.startsWith('text/')) return 'fa-file-alt';
+            if (mimeType.includes('zip') || mimeType.includes('tar') || mimeType.includes('rar')) return 'fa-file-archive';
+            return 'fa-file';
+        }
+
+        // Split method toggle
+        document.querySelectorAll('input[name="split-method"]').forEach(radio => {
+            radio.addEventListener('change', (e) => {
+                const sizeConfig = document.getElementById('size-config');
+                const partsConfig = document.getElementById('parts-config');
+                
+                if (e.target.value === 'size') {
+                    sizeConfig.style.display = 'block';
+                    partsConfig.style.display = 'none';
+                } else {
+                    sizeConfig.style.display = 'none';
+                    partsConfig.style.display = 'block';
+                }
+            });
+        });
+
+        // Webhook checkbox functionality
+        const webhookCheckbox = document.getElementById('upload-webhook');
+        const partSizeInput = document.getElementById('part-size');
+        const sizeUnitSelect = document.getElementById('size-unit');
+
+        webhookCheckbox.addEventListener('change', (e) => {
+            const webhookHelp = document.getElementById('webhook-help');
+            
+            if (e.target.checked) {
+                // Lock to 25MB when webhook is enabled
+                partSizeInput.value = '25';
+                partSizeInput.disabled = true;
+                sizeUnitSelect.value = 'MB';
+                sizeUnitSelect.disabled = true;
+                
+                // Force split by size method
+                document.getElementById('split-by-size').checked = true;
+                document.getElementById('split-by-parts').disabled = true;
+                
+                // Show size config, hide parts config
+                document.getElementById('size-config').style.display = 'block';
+                document.getElementById('parts-config').style.display = 'none';
+                
+                // Show webhook help text
+                webhookHelp.style.display = 'block';
+            } else {
+                // Re-enable inputs when webhook is disabled
+                partSizeInput.disabled = false;
+                sizeUnitSelect.disabled = false;
+                document.getElementById('split-by-parts').disabled = false;
+                
+                // Hide webhook help text
+                webhookHelp.style.display = 'none';
+            }
+        });
+
+        // Form submission
+        splitForm.addEventListener('submit', async (e) => {
+            e.preventDefault();
+            
+            if (!currentFile) {
+                alert('Please select a file first');
+                return;
+            }
+
+            const formData = new FormData();
+            formData.append('file', currentFile);
+            
+            const splitMethod = document.querySelector('input[name="split-method"]:checked').value;
+            formData.append('split-method', splitMethod);
+            
+            if (splitMethod === 'size') {
+                const partSize = document.getElementById('part-size').value;
+                const sizeUnit = document.getElementById('size-unit').value;
+                formData.append('part-size', partSize);
+                formData.append('size-unit', sizeUnit);
+            } else {
+                const numParts = document.getElementById('num-parts').value;
+                formData.append('num-parts', numParts);
+            }
+            
+            const prefix = document.getElementById('file-prefix').value;
+            const useWebhook = document.getElementById('upload-webhook').checked;
+            formData.append('file-prefix', prefix);
+            formData.append('part-extension', 'nitro');
+            formData.append('use-webhook', useWebhook);
+
+            progressContainer.classList.add('visible');
+            splitButton.disabled = true;
+            resultsContainer.classList.remove('visible');
+
+            try {
+                // This will be handled by your backend
+                const response = await fetch('/api/split', {
+                    method: 'POST',
+                    body: formData
+                });
+
+                if (!response.ok) {
+                    throw new Error('Split operation failed');
+                }
+
+                const result = await response.json();
+                displayResults(result);
+                
+            } catch (error) {
+                alert('Error splitting file: ' + error.message);
+            } finally {
+                progressContainer.classList.remove('visible');
+                splitButton.disabled = false;
+            }
+        });
+
+        function displayResults(result) {
+            const resultsContent = document.getElementById('results-content');
+            
+            if (result.success && result.parts) {
+                let html = `
+                    <div class="alert alert-success">
+                        <i class="fas fa-check-circle"></i>
+                        File successfully split into ${result.parts.length} parts
+                    </div>
+                `;
+
+                result.parts.forEach((part, index) => {
+                    html += `
+                        <div class="part-item">
+                            <div class="part-info">
+                                <div class="part-number">${index + 1}</div>
+                                <div class="part-details">
+                                    <div class="part-name">${part.name}</div>
+                                    <div class="part-size">${formatFileSize(part.size)}</div>
+                                </div>
+                            </div>
+                            <div class="part-actions">
+                                <a href="/api/download-part/${part.id}" class="btn-download" target="_blank">
+                                    <i class="fas fa-download"></i>
+                                    Download
+                                </a>
+                            </div>
+                        </div>
+                    `;
+                });
+
+                resultsContent.innerHTML = html;
+                resultsContainer.classList.add('visible');
+                
+                // Store part IDs for download all functionality
+                window.currentParts = result.parts;
+                
+            } else {
+                resultsContent.innerHTML = `
+                    <div class="alert alert-error">
+                        <i class="fas fa-exclamation-triangle"></i>
+                        ${result.message || 'Failed to split file'}
+                    </div>
+                `;
+                resultsContainer.classList.add('visible');
+            }
+        }
+
+        // Download all parts
+        document.getElementById('download-all-btn').addEventListener('click', () => {
+            if (window.currentParts) {
+                window.currentParts.forEach(part => {
+                    const link = document.createElement('a');
+                    link.href = `/api/download-part/${part.id}`;
+                    link.download = part.name;
+                    link.click();
+                });
+            }
+        });
+
+        // Simulate progress (you can remove this and implement real progress tracking)
+        function simulateProgress() {
+            const progressFill = document.getElementById('progress-fill');
+            const progressPercent = document.getElementById('progress-percent');
+            const progressStatus = document.getElementById('progress-status');
+            
+            let progress = 0;
+            const interval = setInterval(() => {
+                progress += Math.random() * 15;
+                if (progress > 100) progress = 100;
+                
+                progressFill.style.width = progress + '%';
+                progressPercent.textContent = Math.round(progress) + '%';
+                
+                if (progress < 30) {
+                    progressStatus.textContent = 'Reading file...';
+                } else if (progress < 70) {
+                    progressStatus.textContent = 'Splitting into parts...';
+                } else if (progress < 100) {
+                    progressStatus.textContent = 'Finalizing...';
+                } else {
+                    progressStatus.textContent = 'Complete!';
+                    clearInterval(interval);
+                }
+            }, 200);
+        }
+    </script>
+</body>
+</html>

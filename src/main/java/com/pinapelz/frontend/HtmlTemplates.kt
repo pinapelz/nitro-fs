@@ -108,4 +108,8 @@ object HtmlTemplates {
             else -> "fas fa-file"
         }
     }
+    
+    fun generateFileSplitterPage(): String {
+        return loadTemplate("file-splitter.html")
+    }
 }

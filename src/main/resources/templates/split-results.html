@@ -1,0 +1,43 @@
+{{#if success}}
+<div class="alert alert-success">
+    <i class="fas fa-check-circle"></i>
+    File successfully split into {{partCount}} parts
+</div>
+
+{{#each parts}}
+<div class="part-item">
+    <div class="part-info">
+        <div class="part-number">{{index}}</div>
+        <div class="part-details">
+            <div class="part-name">{{name}}</div>
+            <div class="part-size">{{size}}</div>
+        </div>
+    </div>
+    <div class="part-actions">
+        <a href="/api/download-part/{{id}}" class="btn-download" target="_blank">
+            <i class="fas fa-download"></i>
+            Download
+        </a>
+    </div>
+</div>
+{{/each}}
+
+<script>
+// Store part data for download all functionality
+window.currentParts = [
+    {{#each parts}}
+    {
+        id: "{{id}}",
+        name: "{{name}}",
+        size: {{sizeBytes}}
+    }{{#unless @last}},{{/unless}}
+    {{/each}}
+];
+</script>
+
+{{else}}
+<div class="alert alert-error">
+    <i class="fas fa-exclamation-triangle"></i>
+    {{errorMessage}}
+</div>
+{{/if}}

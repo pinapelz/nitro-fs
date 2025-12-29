@@ -17,7 +17,7 @@ public class FileSystem {
         DiscordFilePath discPath = new DiscordFilePath();
         discPath.channelId = Long.parseLong(rawDiscordFilePath[0]);
         discPath.messageId = Long.parseLong(rawDiscordFilePath[1]);
-        discPath.fileName = rawDiscordFilePath[3];
+        discPath.fileName = rawDiscordFilePath[2];
         return discPath;
     }
 
@@ -32,7 +32,7 @@ public class FileSystem {
         }
     }
 
-    public ResultSet getFilesByDirectoryIdFiltered(int directoryId, String search, String mimeTypeFilter, String sortBy) {
+    public ResultSet getFilesByDirectoryId(int directoryId, String search, String mimeTypeFilter, String sortBy) {
         return database.getFilesByDirectoryId(directoryId, search, mimeTypeFilter, sortBy);
     }
 
