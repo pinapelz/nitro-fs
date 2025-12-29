@@ -1,0 +1,17 @@
+<div class="directory-item">
+    <div class="directory-content" onclick="switchDirectory({{id}}, '{{path}}')" title="Switch to {{displayName}} directory">
+        <div class="directory-icon">
+            <i class="fas {{iconClass}}"></i>
+        </div>
+        <div class="directory-info">
+            <div class="directory-name">{{displayName}}</div>
+            <div class="directory-meta">
+                <span class="file-count">{{fileCount}} files</span>
+            </div>
+        </div>
+        <div class="directory-arrow">
+            <i class="fas fa-chevron-right"></i>
+        </div>
+    </div>
+    {{deleteButton}}
+</div>

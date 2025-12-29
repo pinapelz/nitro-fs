@@ -1,0 +1,22 @@
+<div class="empty-state">
+    <div class="empty-state-icon">
+        <i class="fas fa-search"></i>
+    </div>
+    <h3>no matches found</h3>
+    <p>try different search terms or clear your filters</p>
+    <button class="btn btn-primary" onclick="clearFilters()">
+        <i class="fas fa-times"></i> clear filters
+    </button>
+</div>
+<script>
+    document.getElementById('count-value').textContent = '0';
+    function clearFilters() {
+        document.querySelector('input[name="search"]').value = '';
+        document.querySelector('select[name="mimeType"]').value = '';
+        document.querySelector('select[name="sortBy"]').value = 'created_at';
+        htmx.ajax('GET', '/api/files?dir=' + currentDirectoryId, {
+            target: '#file-content',
+            indicator: '#loading-spinner'
+        });
+    }
+</script>

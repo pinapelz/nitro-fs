@@ -1,0 +1,16 @@
+<div class="empty-state">
+    <div class="empty-state-icon">
+        <i class="fas fa-folder-open"></i>
+    </div>
+    <h3>no files yet</h3>
+    <p>upload some files through discord to see them here</p>
+</div>
+<script>
+    document.getElementById('count-value').textContent = '0';
+    function clearFilters() {
+        document.querySelector('input[name="search"]').value = '';
+        document.querySelector('select[name="mimeType"]').value = '';
+        document.querySelector('select[name="sortBy"]').value = 'created_at';
+        htmx.trigger('.file-container', 'refresh');
+    }
+</script>

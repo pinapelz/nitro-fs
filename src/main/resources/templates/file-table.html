@@ -1,0 +1,27 @@
+<table class="file-table">
+    <thead>
+        <tr>
+            <th style="width: 40%;">name</th>
+            <th style="width: 25%;">description</th>
+            <th style="width: 10%;">size</th>
+            <th style="width: 10%;">type</th>
+            <th style="width: 10%;">date</th>
+            <th style="width: 5%;">actions</th>
+        </tr>
+    </thead>
+    <tbody>
+        {{fileRows}}
+    </tbody>
+</table>
+<script>
+    document.getElementById('count-value').textContent = '{{fileCount}}';
+    function clearFilters() {
+        document.querySelector('input[name="search"]').value = '';
+        document.querySelector('select[name="mimeType"]').value = '';
+        document.querySelector('select[name="sortBy"]').value = 'created_at';
+        htmx.ajax('GET', '/api/files?dir=' + currentDirectoryId, {
+            target: '#file-content',
+            indicator: '#loading-spinner'
+        });
+    }
+</script>

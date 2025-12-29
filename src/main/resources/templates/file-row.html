@@ -1,0 +1,17 @@
+<tr>
+    <td>
+        <a href="/fetch?fileId={{id}}" target="_blank" class="file-link">
+            <i class="{{fileIcon}} file-icon"></i>
+            {{name}}
+        </a>
+    </td>
+    <td class="file-description">{{description}}</td>
+    <td class="file-size">{{size}}</td>
+    <td><span class="file-type">{{fileType}}</span></td>
+    <td class="file-date">{{createdDate}}</td>
+    <td class="file-actions">
+        <button class="btn-delete" onclick="deleteFile({{id}}, '{{escapedName}}')" title="Delete file">
+            <i class="fas fa-trash"></i>
+        </button>
+    </td>
+</tr>

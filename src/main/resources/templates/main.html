@@ -1,0 +1,840 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>nitro-fs</title>
+    <link href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0/css/all.min.css" rel="stylesheet">
+    <script src="https://unpkg.com/htmx.org@1.9.10"></script>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        body {
+            background-color: #36393f;
+            color: #dcddde;
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+            font-size: 14px;
+            line-height: 1.4;
+        }
+
+        .app-container {
+            min-height: 100vh;
+            display: flex;
+            flex-direction: column;
+        }
+
+        .header {
+            background-color: #2f3136;
+            padding: 12px 20px;
+            border-bottom: 1px solid #202225;
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            position: sticky;
+            top: 0;
+            z-index: 100;
+        }
+
+        .header-left {
+            display: flex;
+            align-items: center;
+            gap: 12px;
+        }
+
+        .header-title {
+            font-size: 16px;
+            font-weight: 600;
+            color: #ffffff;
+            display: flex;
+            align-items: center;
+            gap: 8px;
+        }
+
+        .header-subtitle {
+            font-size: 12px;
+            color: #72767d;
+        }
+
+        .header-actions {
+            display: flex;
+            gap: 8px;
+        }
+
+        .btn {
+            background-color: transparent;
+            border: none;
+            color: #b9bbbe;
+            padding: 6px 12px;
+            border-radius: 4px;
+            font-size: 12px;
+            cursor: pointer;
+            transition: all 0.2s;
+            display: flex;
+            align-items: center;
+            gap: 4px;
+        }
+
+        .btn:hover {
+            background-color: #40444b;
+            color: #ffffff;
+        }
+
+        .btn-primary {
+            background-color: #5865f2;
+            color: #ffffff;
+        }
+
+        .btn-primary:hover {
+            background-color: #4752c4;
+        }
+
+        .main-content {
+            flex: 1;
+            padding: 20px;
+            overflow-y: auto;
+        }
+
+        .search-bar {
+            display: flex;
+            gap: 12px;
+            margin-bottom: 20px;
+            flex-wrap: wrap;
+        }
+
+        .search-input {
+            flex: 1;
+            min-width: 200px;
+            background-color: #40444b;
+            border: 1px solid #202225;
+            border-radius: 4px;
+            padding: 8px 12px;
+            color: #dcddde;
+            font-size: 14px;
+            outline: none;
+        }
+
+        .search-input:focus {
+            border-color: #5865f2;
+        }
+
+        .search-input::placeholder {
+            color: #72767d;
+        }
+
+        .select {
+            background-color: #40444b;
+            border: 1px solid #202225;
+            border-radius: 4px;
+            padding: 8px 12px;
+            color: #dcddde;
+            font-size: 14px;
+            cursor: pointer;
+            outline: none;
+        }
+
+        .select:focus {
+            border-color: #5865f2;
+        }
+
+        .stats {
+            display: flex;
+            gap: 16px;
+            margin-bottom: 20px;
+            align-items: center;
+        }
+
+        .stat-item {
+            display: flex;
+            align-items: center;
+            gap: 6px;
+            color: #72767d;
+            font-size: 12px;
+        }
+
+        .stat-number {
+            color: #ffffff;
+            font-weight: 600;
+        }
+
+        .file-container {
+            background-color: #2f3136;
+            border-radius: 8px;
+            border: 1px solid #202225;
+            overflow: hidden;
+        }
+
+        .file-table {
+            width: 100%;
+            border-collapse: collapse;
+        }
+
+        .file-table th {
+            background-color: #36393f;
+            padding: 12px 16px;
+            text-align: left;
+            font-size: 12px;
+            font-weight: 600;
+            color: #72767d;
+            text-transform: uppercase;
+            border-bottom: 1px solid #202225;
+        }
+
+        .file-table td {
+            padding: 12px 16px;
+            border-bottom: 1px solid #202225;
+            vertical-align: middle;
+        }
+
+        .file-table tbody tr:hover {
+            background-color: #36393f;
+        }
+
+        .file-table tbody tr:last-child td {
+            border-bottom: none;
+        }
+
+        .file-link {
+            color: #00aff4;
+            text-decoration: none;
+            display: flex;
+            align-items: center;
+            gap: 8px;
+            font-weight: 500;
+        }
+
+        .file-link:hover {
+            color: #ffffff;
+            text-decoration: underline;
+        }
+
+        .file-icon {
+            color: #72767d;
+            width: 16px;
+            text-align: center;
+        }
+
+        .file-description {
+            color: #b9bbbe;
+            max-width: 200px;
+            overflow: hidden;
+            text-overflow: ellipsis;
+            white-space: nowrap;
+        }
+
+        .file-size {
+            color: #72767d;
+            font-size: 12px;
+            font-family: 'Courier New', monospace;
+        }
+
+        .file-type {
+            background-color: #5865f2;
+            color: #ffffff;
+            padding: 2px 6px;
+            border-radius: 12px;
+            font-size: 10px;
+            font-weight: 600;
+            text-transform: uppercase;
+        }
+
+        .file-date {
+            color: #72767d;
+            font-size: 12px;
+        }
+
+        .empty-state {
+            text-align: center;
+            padding: 60px 20px;
+            color: #72767d;
+        }
+
+        .empty-state-icon {
+            font-size: 48px;
+            margin-bottom: 16px;
+            opacity: 0.5;
+        }
+
+        .empty-state h3 {
+            color: #b9bbbe;
+            margin-bottom: 8px;
+            font-size: 18px;
+            font-weight: 600;
+        }
+
+        .empty-state p {
+            font-size: 14px;
+            line-height: 1.5;
+        }
+
+        .htmx-indicator {
+            display: none;
+        }
+
+        .htmx-request .htmx-indicator {
+            display: inline;
+        }
+
+        .loading-spinner {
+            animation: spin 1s linear infinite;
+        }
+
+        @keyframes spin {
+            from { transform: rotate(0deg); }
+            to { transform: rotate(360deg); }
+        }
+
+        .filter-badge {
+            background-color: #5865f2;
+            color: #ffffff;
+            padding: 2px 6px;
+            border-radius: 12px;
+            font-size: 10px;
+            margin-left: 8px;
+        }
+
+        .directory-panel {
+            position: fixed;
+            top: 53px;
+            right: 20px;
+            width: 300px;
+            background-color: #2f3136;
+            border: 1px solid #202225;
+            border-radius: 8px;
+            z-index: 200;
+            max-height: 400px;
+            overflow-y: auto;
+        }
+
+        .panel-header {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            padding: 12px 16px;
+            border-bottom: 1px solid #202225;
+        }
+
+        .panel-header h3 {
+            margin: 0;
+            font-size: 14px;
+            font-weight: 600;
+            color: #ffffff;
+        }
+
+        .directory-item {
+            padding: 12px 16px;
+            cursor: pointer;
+            border-bottom: 1px solid #202225;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            transition: background-color 0.2s ease;
+        }
+
+        .directory-item:hover {
+            background-color: #36393f;
+        }
+
+        .directory-item:last-child {
+            border-bottom: none;
+        }
+
+        .directory-content {
+            display: flex;
+            align-items: center;
+            gap: 12px;
+            flex: 1;
+            cursor: pointer;
+        }
+
+        .directory-icon {
+            color: #72767d;
+            font-size: 16px;
+            width: 20px;
+            text-align: center;
+        }
+
+        .directory-info {
+            flex: 1;
+        }
+
+        .directory-name {
+            color: #dcddde;
+            font-size: 14px;
+            font-weight: 500;
+            margin-bottom: 2px;
+        }
+
+        .directory-meta {
+            display: flex;
+            align-items: center;
+            gap: 8px;
+        }
+
+        .file-count {
+            color: #72767d;
+            font-size: 11px;
+        }
+
+        .directory-arrow {
+            color: #72767d;
+            font-size: 10px;
+            transition: transform 0.2s ease;
+        }
+
+        .directory-item:hover .directory-arrow {
+            transform: translateX(2px);
+            color: #b9bbbe;
+        }
+
+        .directory-item:hover .directory-icon {
+            color: #b9bbbe;
+        }
+
+        .directory-item:hover .directory-name {
+            color: #ffffff;
+        }
+
+        .create-directory-form {
+            padding: 12px 16px;
+            border-bottom: 1px solid #202225;
+        }
+
+        .form-row {
+            display: flex;
+            gap: 8px;
+            align-items: center;
+        }
+
+        .form-input {
+            flex: 1;
+            background-color: #40444b;
+            border: 1px solid #202225;
+            border-radius: 4px;
+            padding: 6px 8px;
+            color: #dcddde;
+            font-size: 12px;
+            outline: none;
+        }
+
+        .form-input:focus {
+            border-color: #5865f2;
+        }
+
+        .form-input::placeholder {
+            color: #72767d;
+        }
+
+        .form-input:disabled {
+            opacity: 0.6;
+            cursor: not-allowed;
+        }
+
+        .btn-sm {
+            padding: 6px 8px;
+            font-size: 12px;
+        }
+
+        .form-message {
+            font-size: 11px;
+            margin-top: 8px;
+            padding: 4px 0;
+        }
+
+        .form-message.success {
+            color: #43b581;
+        }
+
+        .form-message.error {
+            color: #f04747;
+        }
+
+        .form-message.loading {
+            color: #72767d;
+        }
+
+        .file-actions {
+            text-align: center;
+        }
+
+        .btn-delete {
+            background: none;
+            border: none;
+            color: #f04747;
+            cursor: pointer;
+            padding: 4px 8px;
+            border-radius: 4px;
+            font-size: 12px;
+            transition: all 0.2s;
+        }
+
+        .btn-delete:hover {
+            background-color: #f04747;
+            color: #ffffff;
+        }
+
+        .directory-actions {
+            opacity: 0;
+            transition: opacity 0.2s;
+        }
+
+        .directory-item:hover .directory-actions {
+            opacity: 1;
+        }
+
+        @media (max-width: 768px) {
+            .search-bar {
+                flex-direction: column;
+            }
+
+            .search-input {
+                min-width: 100%;
+            }
+
+            .file-table th:nth-child(3),
+            .file-table td:nth-child(3),
+            .file-table th:nth-child(4),
+            .file-table td:nth-child(4),
+            .file-table th:nth-child(5),
+            .file-table td:nth-child(5),
+            .file-table th:nth-child(6),
+            .file-table td:nth-child(6) {
+                display: none;
+            }
+        }
+    </style>
+</head>
+<body hx-boost="true">
+    <div class="app-container">
+        <header class="header">
+            <div class="header-left">
+                <div class="header-title">
+                    <i class="fab fa-discord"></i>
+                    nitro-fs
+                </div>
+                <div class="header-subtitle" id="current-directory"># loading...</div>
+            </div>
+            <div class="header-actions">
+                <button class="btn"
+                        hx-get="/api/files?dir={{directoryId}}"
+                        hx-target="#file-content"
+                        hx-indicator="#loading-spinner">
+                    <i class="fas fa-sync-alt"></i>
+                </button>
+                <button class="btn"
+                        hx-get="/api/directories-html"
+                        hx-target="#directory-list"
+                        hx-trigger="click"
+                        onclick="toggleDirectoryPanel()">
+                    <i class="fas fa-folder"></i>
+                </button>
+            </div>
+        </header>
+
+        <main class="main-content">
+            <div class="directory-panel" id="directory-panel" style="display: none;">
+                <div class="panel-header">
+                    <h3>directories</h3>
+                    <button class="btn btn-sm" onclick="toggleDirectoryPanel()">
+                        <i class="fas fa-times"></i>
+                    </button>
+                </div>
+
+                <div class="create-directory-form">
+                    <form onsubmit="createDirectory(event)">
+                        <div class="form-row">
+                            <input type="text"
+                                   id="new-directory-name"
+                                   placeholder="directory name..."
+                                   class="form-input"
+                                   maxlength="100"
+                                   pattern="[^<>:\"/\\|?*\x00-\x1f]+"
+                                   title="Directory name cannot contain: < > : \" / \ | ? *"
+                                   required>
+                            <button type="submit" class="btn btn-primary btn-sm" id="create-btn">
+                                <i class="fas fa-plus"></i>
+                            </button>
+                        </div>
+                    </form>
+                    <div id="create-directory-message" class="form-message"></div>
+                </div>
+
+                <div id="directory-list">
+                    <div class="empty-state">
+                        <i class="fas fa-spinner loading-spinner"></i>
+                    </div>
+                </div>
+            </div>
+
+            <div class="search-bar">
+                <input type="text"
+                       class="search-input"
+                       placeholder="search files..."
+                       hx-get="/api/files?dir={{directoryId}}"
+                       hx-trigger="keyup changed delay:300ms"
+                       hx-target="#file-content"
+                       hx-indicator="#loading-spinner"
+                       name="search">
+
+                <select class="select"
+                        hx-get="/api/files?dir={{directoryId}}"
+                        hx-trigger="change"
+                        hx-target="#file-content"
+                        hx-indicator="#loading-spinner"
+                        name="mimeType">
+                    <option value="">all types</option>
+                    <option value="image/">images</option>
+                    <option value="video/">videos</option>
+                    <option value="audio/">audio</option>
+                    <option value="application/pdf">pdfs</option>
+                    <option value="text/">text</option>
+                    <option value="application/zip">archives</option>
+                </select>
+
+                <select class="select"
+                        hx-get="/api/files?dir={{directoryId}}"
+                        hx-trigger="change"
+                        hx-target="#file-content"
+                        hx-indicator="#loading-spinner"
+                        name="sortBy">
+                    <option value="created_at">newest</option>
+                    <option value="file_name">name</option>
+                    <option value="size">size</option>
+                </select>
+            </div>
+
+            <div class="stats">
+                <div class="stat-item">
+                    <span id="file-count" class="stat-number">
+                        <span class="htmx-indicator" id="loading-spinner">
+                            <i class="fas fa-spinner loading-spinner"></i>
+                        </span>
+                        <span id="count-value">loading</span>
+                    </span>
+                    files
+                </div>
+            </div>
+
+            <div class="file-container"
+                 hx-get="/api/files?dir={{directoryId}}"
+                 hx-trigger="load"
+                 hx-target="#file-content"
+                 hx-indicator="#loading-spinner">
+                <div id="file-content">
+                    <div class="empty-state">
+                        <div class="empty-state-icon">
+                            <i class="fas fa-spinner loading-spinner"></i>
+                        </div>
+                        <h3>loading files...</h3>
+                        <p>fetching your files from discord storage</p>
+                    </div>
+                </div>
+            </div>
+        </main>
+    </div>
+
+    <script>
+        let currentDirectoryId = {{directoryId}};
+
+        function toggleDirectoryPanel() {
+            const panel = document.getElementById('directory-panel');
+            panel.style.display = panel.style.display === 'none' ? 'block' : 'none';
+        }
+
+        function switchDirectory(dirId, dirPath) {
+            console.log('Switching to directory:', dirId, dirPath);
+            currentDirectoryId = dirId;
+            const displayPath = dirPath === '' ? 'root' : dirPath;
+            document.getElementById('current-directory').textContent = '# ' + displayPath;
+
+            // Update all HTMX endpoints to use new directory
+            const elementsWithFiles = document.querySelectorAll('[hx-get*="/api/files"]');
+            console.log('Found', elementsWithFiles.length, 'elements to update');
+            elementsWithFiles.forEach(el => {
+                const currentUrl = el.getAttribute('hx-get');
+                const baseUrl = currentUrl.split('?')[0];
+                const params = new URLSearchParams(currentUrl.split('?')[1] || '');
+                params.set('dir', dirId);
+                const newUrl = baseUrl + '?' + params.toString();
+                el.setAttribute('hx-get', newUrl);
+                console.log('Updated element URL to:', newUrl);
+            });
+
+            // Clear any existing search/filters
+            const searchInput = document.querySelector('input[name="search"]');
+            const mimeSelect = document.querySelector('select[name="mimeType"]');
+            const sortSelect = document.querySelector('select[name="sortBy"]');
+
+            if (searchInput) searchInput.value = '';
+            if (mimeSelect) mimeSelect.value = '';
+            if (sortSelect) sortSelect.value = 'created_at';
+
+            // Refresh file list with new directory
+            console.log('Making HTMX request to: /api/files?dir=' + dirId);
+            htmx.ajax('GET', '/api/files?dir=' + dirId, {
+                target: '#file-content',
+                indicator: '#loading-spinner'
+            });
+
+            toggleDirectoryPanel();
+        }
+
+        // Clear filters function
+        function clearFilters() {
+            document.querySelector('input[name="search"]').value = '';
+            document.querySelector('select[name="mimeType"]').value = '';
+            document.querySelector('select[name="sortBy"]').value = 'created_at';
+            // Refresh file list with current directory
+            htmx.ajax('GET', '/api/files?dir=' + currentDirectoryId, {
+                target: '#file-content',
+                indicator: '#loading-spinner'
+            });
+        }
+
+        function createDirectory(event) {
+            event.preventDefault();
+            const input = document.getElementById('new-directory-name');
+            const message = document.getElementById('create-directory-message');
+            const path = input.value.trim();
+
+            // Validation
+            if (!path) {
+                showMessage(message, 'Please enter a directory name', 'error');
+                return;
+            }
+
+            if (path.length < 1 || path.length > 100) {
+                showMessage(message, 'Directory name must be 1-100 characters', 'error');
+                return;
+            }
+
+            // Check for invalid characters
+            const invalidChars = /[<>:"/\\|?*\x00-\x1f]/;
+            if (invalidChars.test(path)) {
+                showMessage(message, 'Directory name contains invalid characters', 'error');
+                return;
+            }
+
+            // Check for reserved names
+            const reserved = ['CON', 'PRN', 'AUX', 'NUL', 'COM1', 'COM2', 'COM3', 'COM4', 'COM5', 'COM6', 'COM7', 'COM8', 'COM9', 'LPT1', 'LPT2', 'LPT3', 'LPT4', 'LPT5', 'LPT6', 'LPT7', 'LPT8', 'LPT9'];
+            if (reserved.includes(path.toUpperCase())) {
+                showMessage(message, 'Directory name is reserved', 'error');
+                return;
+            }
+
+            if (path === '.' || path === '..') {
+                showMessage(message, 'Invalid directory name', 'error');
+                return;
+            }
+
+            // Show loading
+            input.disabled = true;
+            showMessage(message, 'Creating directory...', 'loading');
+
+            fetch('/api/directories', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+                body: 'path=' + encodeURIComponent(path)
+            })
+            .then(response => response.json())
+            .then(data => {
+                input.disabled = false;
+                if (data.success) {
+                    showMessage(message, 'Directory created!', 'success');
+                    input.value = '';
+                    // Refresh directory list
+                    htmx.ajax('GET', '/api/directories-html', {
+                        target: '#directory-list'
+                    });
+                } else {
+                    showMessage(message, data.message || 'Failed to create directory', 'error');
+                }
+            })
+            .catch(error => {
+                input.disabled = false;
+                showMessage(message, 'Network error: ' + error.message, 'error');
+            });
+        }
+
+        function showMessage(element, text, type) {
+            element.textContent = text;
+            element.className = 'form-message ' + type;
+            if (type === 'success') {
+                setTimeout(() => {
+                    element.textContent = '';
+                    element.className = 'form-message';
+                }, 3000);
+            }
+        }
+
+        // Update directory name on load
+        console.log('Loading current directory info for ID:', currentDirectoryId);
+        fetch('/api/directory/' + currentDirectoryId)
+            .then(r => {
+                console.log('Directory API response status:', r.status);
+                return r.json();
+            })
+            .then(dir => {
+                console.log('Directory info loaded:', dir);
+                const displayPath = dir.path === '' ? 'root' : dir.path;
+                document.getElementById('current-directory').textContent = '# ' + displayPath;
+            })
+            .catch(error => {
+                console.error('Failed to load directory info:', error);
+                document.getElementById('current-directory').textContent = '# root';
+            });
+
+        function deleteDirectory(dirId, dirName) {
+            if (confirm('Are you sure you want to delete directory "' + dirName + '"?\\n\\nNote: Directory must be empty to delete.')) {
+                fetch('/api/directories/' + dirId, {
+                    method: 'DELETE'
+                })
+                .then(response => response.json())
+                .then(data => {
+                    if (data.success) {
+                        // Refresh directory list
+                        htmx.ajax('GET', '/api/directories-html', {
+                            target: '#directory-list'
+                        });
+                        // If we're currently in the deleted directory, switch to root
+                        if (currentDirectoryId == dirId) {
+                            switchDirectory(1, '');
+                        }
+                    } else {
+                        alert('Failed to delete directory: ' + data.message);
+                    }
+                })
+                .catch(error => {
+                    alert('Error deleting directory: ' + error.message);
+                });
+            }
+        }
+
+        function deleteFile(fileId, fileName) {
+            if (confirm('Are you sure you want to delete "' + fileName + '"?')) {
+                fetch('/api/files/' + fileId, {
+                    method: 'DELETE'
+                })
+                .then(response => response.json())
+                .then(data => {
+                    if (data.success) {
+                        // Refresh file list
+                        htmx.ajax('GET', '/api/files?dir=' + currentDirectoryId, {
+                            target: '#file-content',
+                            indicator: '#loading-spinner'
+                        });
+                    } else {
+                        alert('Failed to delete file: ' + data.message);
+                    }
+                })
+                .catch(error => {
+                    alert('Error deleting file: ' + error.message);
+                });
+            }
+        }
+    </script>
+</body>
+</html>
