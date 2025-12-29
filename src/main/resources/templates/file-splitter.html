@@ -629,12 +629,12 @@
                                 <input type="checkbox" id="upload-webhook" class="radio-input">
                                 <label for="upload-webhook" class="radio-label">
                                     <i class="fas fa-webhook" style="margin-right: 4px; color: #5865f2;"></i>
-                                    Upload via Webhook (locks to 25MB per part)
+                                    Upload via Webhook (locks to 10MB per part)
                                 </label>
                             </div>
                             <div class="form-help" id="webhook-help" style="display: none; margin-top: 8px; padding: 8px 12px; background-color: rgba(88, 101, 242, 0.1); border: 1px solid #5865f2; border-radius: 4px;">
                                 <i class="fas fa-info-circle" style="margin-right: 6px; color: #5865f2;"></i>
-                                Webhook mode is active. File will be split into exactly 25MB parts for Discord upload compatibility.
+                                Webhook mode is active. File will be split into exactly 10MB parts for Discord upload compatibility.
                             </div>
                         </div>
 
@@ -805,8 +805,7 @@
             const webhookHelp = document.getElementById('webhook-help');
             
             if (e.target.checked) {
-                // Lock to 25MB when webhook is enabled
-                partSizeInput.value = '25';
+                partSizeInput.value = '10';
                 partSizeInput.disabled = true;
                 sizeUnitSelect.value = 'MB';
                 sizeUnitSelect.disabled = true;

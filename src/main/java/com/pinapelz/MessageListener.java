@@ -19,10 +19,12 @@ public class MessageListener extends ListenerAdapter {
     @Override
     public void onMessageReceived(MessageReceivedEvent event)
     {
-        if (event.getAuthor().isBot()) return;
         Message message = event.getMessage();
         String content = message.getContentRaw();
-
+        if(content.contains("nitro-fs-ignore")){
+            return;
+        }
+        if (event.getAuthor().isBot() || event.getAuthor().isSystem()) return;
         if(!message.getAttachments().isEmpty()){
             DirectoryInfo dirInfo = parseDirectoryFromMessage(content);
             
