@@ -88,4 +88,163 @@ public class Database {
         }
     }
 
+    public ResultSet getFilesByDirectoryId(int directoryId, String search, String mimeTypeFilter, String sortBy) {
+        StringBuilder sql = new StringBuilder("""
+        SELECT
+            file_id,
+            file_name,
+            file_description,
+            size,
+            mime_type,
+            created_at
+        FROM files
+        WHERE directory_id = ?
+        """);
+
+        if (search != null && !search.trim().isEmpty()) {
+            sql.append(" AND (LOWER(file_name) LIKE ? OR LOWER(file_description) LIKE ?)");
+        }
+
+        if (mimeTypeFilter != null && !mimeTypeFilter.trim().isEmpty()) {
+            sql.append(" AND mime_type LIKE ?");
+        }
+
+        switch (sortBy) {
+            case "file_name":
+                sql.append(" ORDER BY file_name ASC");
+                break;
+            case "size":
+                sql.append(" ORDER BY size DESC");
+                break;
+            default:
+                sql.append(" ORDER BY created_at DESC");
+                break;
+        }
+
+        try {
+            PreparedStatement ps = conn.prepareStatement(sql.toString());
+            int paramIndex = 1;
+
+            ps.setInt(paramIndex++, directoryId);
+
+            if (search != null && !search.trim().isEmpty()) {
+                String searchPattern = "%" + search.toLowerCase() + "%";
+                ps.setString(paramIndex++, searchPattern);
+                ps.setString(paramIndex++, searchPattern);
+            }
+
+            if (mimeTypeFilter != null && !mimeTypeFilter.trim().isEmpty()) {
+                ps.setString(paramIndex++, mimeTypeFilter + "%");
+            }
+
+            return ps.executeQuery();
+        } catch (SQLException e) {
+            throw new RuntimeException("Failed to fetch filtered files for directory", e);
+        }
+    }
+
+    public ResultSet getAllDirectories() {
+        String sql = """
+        SELECT
+            directory_id,
+            path,
+            created_at,
+            (SELECT COUNT(*) FROM files WHERE directory_id = directories.directory_id) as file_count
+        FROM directories
+        ORDER BY path ASC
+        """;
+
+        try {
+            PreparedStatement ps = conn.prepareStatement(sql);
+            return ps.executeQuery();
+        } catch (SQLException e) {
+            throw new RuntimeException("Failed to fetch directories", e);
+        }
+    }
+
+    public ResultSet getDirectoryById(int directoryId) {
+        String sql = """
+        SELECT
+            directory_id,
+            path,
+            created_at,
+            (SELECT COUNT(*) FROM files WHERE directory_id = directories.directory_id) as file_count
+        FROM directories
+        WHERE directory_id = ?
+        """;
+
+        try {
+            PreparedStatement ps = conn.prepareStatement(sql);
+            ps.setInt(1, directoryId);
+            return ps.executeQuery();
+        } catch (SQLException e) {
+            throw new RuntimeException("Failed to fetch directory", e);
+        }
+    }
+
+    public int createDirectory(String path) throws SQLException {
+        String sql = """
+        INSERT INTO directories (path)
+        VALUES (?)
+        ON CONFLICT (path) DO UPDATE SET path = EXCLUDED.path
+        RETURNING directory_id
+        """;
+
+        try (PreparedStatement ps = conn.prepareStatement(sql)) {
+            ps.setString(1, path);
+            try (ResultSet rs = ps.executeQuery()) {
+                if (rs.next()) {
+                    return rs.getInt("directory_id");
+                }
+                throw new SQLException("Failed to get directory ID");
+            }
+        }
+    }
+
+    public boolean deleteFile(int fileId) throws SQLException {
+        String sql = """
+        DELETE FROM files
+        WHERE file_id = ?
+        """;
+
+        try (PreparedStatement ps = conn.prepareStatement(sql)) {
+            ps.setInt(1, fileId);
+            int rowsAffected = ps.executeUpdate();
+            return rowsAffected > 0;
+        }
+    }
+
+    public boolean deleteDirectory(int directoryId) throws SQLException {
+        // Check if directory has files
+        String checkSql = """
+        SELECT COUNT(*) as file_count
+        FROM files
+        WHERE directory_id = ?
+        """;
+
+        try (PreparedStatement checkPs = conn.prepareStatement(checkSql)) {
+            checkPs.setInt(1, directoryId);
+            try (ResultSet rs = checkPs.executeQuery()) {
+                if (rs.next() && rs.getInt("file_count") > 0) {
+                    throw new SQLException("Cannot delete directory: contains files");
+                }
+            }
+        }
+
+        if (directoryId == 1) {
+            throw new SQLException("Cannot delete root directory");
+        }
+
+        String deleteSql = """
+        DELETE FROM directories
+        WHERE directory_id = ?
+        """;
+
+        try (PreparedStatement deletePs = conn.prepareStatement(deleteSql)) {
+            deletePs.setInt(1, directoryId);
+            int rowsAffected = deletePs.executeUpdate();
+            return rowsAffected > 0;
+        }
+    }
+
 }

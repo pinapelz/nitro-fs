@@ -4,8 +4,6 @@ import net.dv8tion.jda.api.JDA;
 import net.dv8tion.jda.api.entities.Message;
 import net.dv8tion.jda.api.entities.channel.concrete.TextChannel;
 
-import java.util.concurrent.CompletableFuture;
-
 public class Retriever {
 
     private final JDA jda;
@@ -25,7 +23,7 @@ public class Retriever {
 
         for (Message.Attachment file : message.getAttachments()) {
             if (file.getFileName().equals(fileName)) {
-                return file.getUrl();
+                return file.getProxyUrl();
             }
         }
 
