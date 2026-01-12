@@ -519,9 +519,10 @@
             </div>
             <div class="header-actions">
                 <button class="btn"
-                        hx-get="/api/files?dir={{directoryId}}"
+                        hx-get="/api/files"
                         hx-target="#file-content"
-                        hx-indicator="#loading-spinner">
+                        hx-indicator="#loading-spinner"
+                        hx-include="#filter-form">
                     <i class="fas fa-sync-alt"></i>
                 </button>
                 <button class="btn"
@@ -573,21 +574,25 @@
                 </div>
             </div>
 
-            <div class="search-bar">
+            <div class="search-bar" id="filter-form">
+                <input type="hidden" id="dir-input" name="dir" value="{{directoryId}}">
+                
                 <input type="text"
                        class="search-input"
                        placeholder="search files..."
-                       hx-get="/api/files?dir={{directoryId}}"
+                       hx-get="/api/files"
                        hx-trigger="keyup changed delay:300ms"
                        hx-target="#file-content"
                        hx-indicator="#loading-spinner"
+                       hx-include="#filter-form"
                        name="search">
 
                 <select class="select"
-                        hx-get="/api/files?dir={{directoryId}}"
+                        hx-get="/api/files"
                         hx-trigger="change"
                         hx-target="#file-content"
                         hx-indicator="#loading-spinner"
+                        hx-include="#filter-form"
                         name="mimeType">
                     <option value="">all types</option>
                     <option value="image/">images</option>
@@ -599,10 +604,11 @@
                 </select>
 
                 <select class="select"
-                        hx-get="/api/files?dir={{directoryId}}"
+                        hx-get="/api/files"
                         hx-trigger="change"
                         hx-target="#file-content"
                         hx-indicator="#loading-spinner"
+                        hx-include="#filter-form"
                         name="sortBy">
                     <option value="created_at">newest</option>
                     <option value="file_name">name</option>
@@ -623,10 +629,11 @@
             </div>
 
             <div class="file-container"
-                 hx-get="/api/files?dir={{directoryId}}"
+                 hx-get="/api/files"
                  hx-trigger="load"
                  hx-target="#file-content"
-                 hx-indicator="#loading-spinner">
+                 hx-indicator="#loading-spinner"
+                 hx-include="#filter-form">
                 <div id="file-content">
                     <div class="empty-state">
                         <div class="empty-state-icon">
@@ -654,18 +661,11 @@
             const displayPath = dirPath === '' ? 'root' : dirPath;
             document.getElementById('current-directory').textContent = '# ' + displayPath;
 
-            // Update all HTMX endpoints to use new directory
-            const elementsWithFiles = document.querySelectorAll('[hx-get*="/api/files"]');
-            console.log('Found', elementsWithFiles.length, 'elements to update');
-            elementsWithFiles.forEach(el => {
-                const currentUrl = el.getAttribute('hx-get');
-                const baseUrl = currentUrl.split('?')[0];
-                const params = new URLSearchParams(currentUrl.split('?')[1] || '');
-                params.set('dir', dirId);
-                const newUrl = baseUrl + '?' + params.toString();
-                el.setAttribute('hx-get', newUrl);
-                console.log('Updated element URL to:', newUrl);
-            });
+            // Update the hidden directory input
+            const dirInput = document.getElementById('dir-input');
+            if (dirInput) {
+                dirInput.value = dirId;
+            }
 
             // Clear any existing search/filters
             const searchInput = document.querySelector('input[name="search"]');
@@ -678,9 +678,15 @@
 
             // Refresh file list with new directory
             console.log('Making HTMX request to: /api/files?dir=' + dirId);
-            htmx.ajax('GET', '/api/files?dir=' + dirId, {
+            htmx.ajax('GET', '/api/files', {
                 target: '#file-content',
-                indicator: '#loading-spinner'
+                indicator: '#loading-spinner',
+                values: {
+                    dir: dirId,
+                    search: '',
+                    mimeType: '',
+                    sortBy: 'created_at'
+                }
             });
 
             toggleDirectoryPanel();
