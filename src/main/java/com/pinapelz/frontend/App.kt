@@ -3,10 +3,11 @@ package com.pinapelz.frontend
 import io.javalin.Javalin
 import com.pinapelz.Retriever
 import com.pinapelz.FileSystem
-import java.sql.ResultSet
 import java.text.SimpleDateFormat
 import java.io.File
 import java.net.URLEncoder
+import java.time.ZoneId
+import java.time.format.DateTimeFormatter
 
 fun startFrontend(retriever: Retriever, fileSystem: FileSystem, webhooksFile: String) {
     // Initialize WebhookManager if webhooks file exists
@@ -32,29 +33,6 @@ fun startFrontend(retriever: Retriever, fileSystem: FileSystem, webhooksFile: St
         ctx.html(generateFileSplitterHtml())
     }
 
-    /*
-    {
-  "success": true,
-  "parts": [
-    {
-      "id": "unique-part-id-1",
-      "name": "filename.part001.nitro",
-      "size": 26214400
-    },
-    {
-      "id": "unique-part-id-2",
-      "name": "filename.part002.nitro",
-      "size": 26214400
-    },
-    {
-      "id": "unique-part-id-3",
-      "name": "filename.part003.nitro",
-      "size": 15728640
-    }
-  ]
-}
-
-     */
     app.post("/api/split") { ctx ->
         val manager = MultipartFileManager(fileSystem, webhookManager)
         val result = manager.handleSplitRequest(ctx)
@@ -64,37 +42,37 @@ fun startFrontend(retriever: Retriever, fileSystem: FileSystem, webhooksFile: St
     app.get("/api/directories") { ctx ->
         val directories = mutableListOf<Map<String, Any>>()
         val rs = fileSystem.getAllDirectories()
-
-        while (rs.next()) {
-            directories.add(mapOf(
-                "id" to rs.getInt("directory_id"),
-                "path" to rs.getString("path"),
-                "fileCount" to rs.getInt("file_count"),
-                "created" to rs.getTimestamp("created_at").toString()
-            ))
+        for (d in rs) {
+            directories.add(
+                mapOf(
+                    "id" to d.directoryId,
+                    "path" to d.path,
+                    "fileCount" to d.fileCount,
+                    "created" to d.createdAt.toString()
+                )
+            )
         }
-        rs.close()
+
 
         ctx.json(directories)
     }
 
     app.get("/api/directory/{id}") { ctx ->
         val directoryId = ctx.pathParam("id").toInt()
-        val rs = fileSystem.getDirectoryById(directoryId)
+        val d = fileSystem.getDirectoryById(directoryId)
 
-        if (rs.next()) {
+        if (d != null) {
             val directory = mapOf(
-                "id" to rs.getInt("directory_id"),
-                "path" to rs.getString("path"),
-                "fileCount" to rs.getInt("file_count"),
-                "created" to rs.getTimestamp("created_at").toString()
+                "id" to d.directoryId,
+                "path" to d.path,
+                "fileCount" to d.fileCount,
+                "created" to d.createdAt.toString()
             )
-            rs.close()
             ctx.json(directory)
         } else {
-            rs.close()
             ctx.status(404).result("Directory not found")
         }
+
     }
 
     app.get("/api/files") { ctx ->
@@ -104,55 +82,71 @@ fun startFrontend(retriever: Retriever, fileSystem: FileSystem, webhooksFile: St
         val sortBy = ctx.queryParam("sortBy") ?: "created_at"
 
         val files = mutableListOf<Map<String, Any>>()
-        val rs: ResultSet = fileSystem.getFilesByDirectoryId(directoryId, search, mimeTypeFilter, sortBy)
         val dateFormat = SimpleDateFormat("yyyy-MM-dd HH:mm:ss")
 
-        while (rs.next()) {
-            files.add(mapOf(
-                "id" to rs.getInt("file_id"),
-                "name" to rs.getString("file_name"),
-                "description" to (rs.getString("file_description") ?: ""),
-                "size" to formatFileSize(rs.getLong("size")),
-                "mimeType" to (rs.getString("mime_type") ?: "unknown"),
-                "created" to dateFormat.format(rs.getTimestamp("created_at"))
-            ))
-        }
-        rs.close()
+// regular files
+        val fileEntries = fileSystem.getFilesByDirectoryId(
+            directoryId,
+            search,
+            mimeTypeFilter,
+            sortBy
+        )
 
-        val partialsRs = fileSystem.getGroupedPartials(directoryId, search)
-        while (partialsRs.next()) {
-            val originalName = partialsRs.getString("original_filename")
-            val partialDescription = partialsRs.getString("file_description")
-            files.add(mapOf(
-                "id" to "partial:$originalName|$directoryId",
-                "name" to originalName,
-                "description" to (partialDescription ?: ""),
-                "size" to formatFileSize(partialsRs.getLong("size")),
-                "mimeType" to (partialsRs.getString("mime_type") ?: "application/octet-stream"),
-                "created" to dateFormat.format(partialsRs.getTimestamp("created_at"))
-            ))
+        for (f in fileEntries) {
+            files.add(
+                mapOf(
+                    "id" to f.fileId,
+                    "name" to f.fileName,
+                    "description" to (f.description ?: ""),
+                    "size" to formatFileSize(f.size),
+                    "mimeType" to (f.mimeType ?: "unknown"),
+                    "created" to DateTimeFormatter
+                        .ofPattern("yyyy-MM-dd HH:mm:ss")
+                        .withZone(ZoneId.systemDefault())
+                        .format(f.createdAt)
+                )
+            )
         }
-        partialsRs.close()
+
+
+        val partials = fileSystem.getGroupedPartials(directoryId, search)
+        for (p in partials) {
+            files.add(
+                mapOf(
+                    "id" to "partial:${p.originalFilename}|$directoryId",
+                    "name" to p.originalFilename,
+                    "description" to (p.description ?: ""),
+                    "size" to formatFileSize(p.size),
+                    "mimeType" to (p.mimeType ?: "application/octet-stream"),
+                    "created" to DateTimeFormatter
+                        .ofPattern("yyyy-MM-dd HH:mm:ss")
+                        .withZone(ZoneId.systemDefault())
+                        .format(p.createdAt)
+                )
+            )
+        }
 
         val html = generateFileTableHtml(files, search, mimeTypeFilter)
         ctx.html(html)
         ctx.header("HX-Trigger", "updateFileCount")
         ctx.header("X-File-Count", files.size.toString())
+
     }
 
     app.get("/api/directories-html") { ctx ->
         val directories = mutableListOf<Map<String, Any>>()
-        val rs = fileSystem.getAllDirectories()
+        val directoriesResult = fileSystem.getAllDirectories()
 
-        while (rs.next()) {
-            directories.add(mapOf(
-                "id" to rs.getInt("directory_id"),
-                "path" to rs.getString("path"),
-                "fileCount" to rs.getInt("file_count"),
-                "created" to rs.getTimestamp("created_at").toString()
-            ))
+        for (d in directoriesResult) {
+            directories.add(
+                mapOf(
+                    "id" to d.directoryId,
+                    "path" to d.path,
+                    "fileCount" to d.fileCount,
+                    "created" to d.createdAt.toString()
+                )
+            )
         }
-        rs.close()
 
         val html = generateDirectoryListHtml(directories)
         ctx.html(html)
@@ -269,21 +263,22 @@ fun startFrontend(retriever: Retriever, fileSystem: FileSystem, webhooksFile: St
         val filename = ctx.queryParam("filename") ?: throw io.javalin.http.BadRequestResponse("filename required")
         val dirId = ctx.queryParam("dir")?.toIntOrNull() ?: throw io.javalin.http.BadRequestResponse("dir id required")
 
-        val rs = fileSystem.getFilePartialsByOriginalFilename(filename, dirId)
         data class PartInfo(val channelId: String, val messageId: String, val partName: String, val isWebhook: Boolean)
         val parts = mutableListOf<PartInfo>()
         var mimeType = "application/octet-stream"
 
-        while (rs.next()) {
-            parts.add(PartInfo(
-                rs.getString("disc_channel_id"),
-                rs.getString("disc_message_id"),
-                rs.getString("part_name"),
-                rs.getBoolean("uploaded_via_webhook")
-            ))
-            mimeType = rs.getString("mime_type") ?: mimeType
+        for (p in fileSystem.getFilePartialsByOriginalFilename(filename, dirId)) {
+            parts.add(
+                PartInfo(
+                    p.channelId,
+                    p.messageId,
+                    p.partName,
+                    p.uploadedViaWebhook
+                )
+            )
+            mimeType = p.mimeType ?: mimeType
         }
-        rs.close()
+
 
         if (parts.isEmpty()) {
             ctx.status(404).result("No parts found for $filename")

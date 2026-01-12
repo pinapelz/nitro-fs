@@ -1,389 +1,413 @@
-/*
-Postgres will serve as the index for managing all the files. Iteration through all messages is too slow
- */
 package com.pinapelz;
 
+import com.zaxxer.hikari.HikariConfig;
+import com.zaxxer.hikari.HikariDataSource;
+
+import javax.sql.DataSource;
 import java.io.IOException;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.sql.*;
-import java.sql.Types;
-import java.util.Properties;
+import java.time.OffsetDateTime;
+import java.util.ArrayList;
+import java.util.List;
 
 public class Database {
 
-    private Connection conn;
+    private final DataSource ds;
 
-    public Database(String host, String user, String password, String db){
+    public record FileEntry(
+            int fileId,
+            String fileName,
+            String description,
+            long size,
+            String mimeType,
+            OffsetDateTime createdAt
+    ) {}
+
+    public record DirectoryEntry(
+            int directoryId,
+            String path,
+            OffsetDateTime createdAt,
+            int fileCount
+    ) {}
+
+    public record FilePartialEntry(
+            long partialId,
+            String channelId,
+            String messageId,
+            String partName,
+            int partNumber,
+            long partSize,
+            String originalFilename,
+            String mimeType,
+            boolean uploadedViaWebhook,
+            OffsetDateTime createdAt
+    ) {}
+
+    public record PartialGroupEntry(
+            String originalFilename,
+            String mimeType,
+            int directoryId,
+            OffsetDateTime createdAt,
+            long size,
+            String description
+    ) {}
+
+    public Database(String host, String user, String password, String db) {
         try {
-            conn = createDBConnection(host, user, password, db);
-            System.out.println("[Database] Running schema.sql as necessary");
-            String schemaSQL = Files.readString(Path.of("schema.sql"));
-            Statement statement = conn.createStatement();
-            statement.execute(schemaSQL);
+            ds = createDataSource(host, user, password, db);
+            try (Connection c = ds.getConnection();
+                 Statement s = c.createStatement()) {
+                s.execute(Files.readString(Path.of("schema.sql")));
+            }
         } catch (IOException | SQLException e) {
             throw new RuntimeException(e);
         }
-
     }
 
-    public static Connection createDBConnection(String host, String user, String password, String db) throws IOException, SQLException {
-        String url = "jdbc:postgresql://"+host+"/"+db+"?sslmode=require&channel_binding=require";
-        Properties props = new Properties();
-        props.setProperty("user", user);
-        props.setProperty("password", password);
-        return DriverManager.getConnection(url, props);
+    private static DataSource createDataSource(String host, String user, String pass, String db) {
+        HikariConfig c = new HikariConfig();
+        c.setJdbcUrl("jdbc:postgresql://" + host + "/" + db + "?sslmode=require&channel_binding=require");
+        c.setUsername(user);
+        c.setPassword(pass);
+        c.setMaximumPoolSize(3);
+        c.setMinimumIdle(1);
+        c.setIdleTimeout(60_000);
+        c.setMaxLifetime(600_000);
+        c.addDataSourceProperty("reWriteBatchedInserts", "true");
+        return new HikariDataSource(c);
     }
 
-    public void recordFileMetadata(String channelId, String messageId, int rootDirId, String fileName, String description, int size, String mimeType) throws SQLException {
-        PreparedStatement ps = conn.prepareStatement("""
-    INSERT INTO files (
-        disc_channel_id,
-        disc_message_id,
-        directory_id,
-        file_name,
-        file_description,
-        size,
-        mime_type
-    )
-    VALUES (?, ?, ?, ?, ?, ?, ?)
-""");
-        ps.setString(1, channelId);
-        ps.setString(2, messageId);
-        ps.setLong(3, rootDirId);
-        ps.setString(4, fileName);
-        ps.setString(5, description);
-        ps.setLong(6, size);
-        ps.setString(7, mimeType);
-        ps.executeUpdate();
+    public void recordFileMetadata(
+            String channelId, String messageId, int dirId,
+            String name, String desc, int size, String mime
+    ) throws SQLException {
 
+        String sql = """
+            INSERT INTO files
+            (disc_channel_id, disc_message_id, directory_id,
+             file_name, file_description, size, mime_type)
+            VALUES (?, ?, ?, ?, ?, ?, ?)
+        """;
+
+        try (Connection c = ds.getConnection();
+             PreparedStatement p = c.prepareStatement(sql)) {
+
+            p.setString(1, channelId);
+            p.setString(2, messageId);
+            p.setInt(3, dirId);
+            p.setString(4, name);
+            p.setString(5, desc);
+            p.setInt(6, size);
+            p.setString(7, mime);
+            p.executeUpdate();
+        }
     }
 
     public String[] getFileById(int fileId) {
         String sql = """
-        SELECT
-            disc_channel_id,
-            disc_message_id,
-            file_name
-        FROM files
-        WHERE file_id = ?
-    """;
+            SELECT disc_channel_id, disc_message_id, file_name
+            FROM files WHERE file_id = ?
+        """;
 
-        try (PreparedStatement ps = conn.prepareStatement(sql)) {
-            ps.setInt(1, fileId);
+        try (Connection c = ds.getConnection();
+             PreparedStatement p = c.prepareStatement(sql)) {
 
-            try (ResultSet rs = ps.executeQuery()) {
-                if (!rs.next()) {
-                    throw new RuntimeException("File not found for id=" + fileId);
-                }
-
-                String channelId = rs.getString("disc_channel_id");
-                String messageId = rs.getString("disc_message_id");
-                String fileName  = rs.getString("file_name");
-
-                return new String[]{ channelId, messageId, fileName };
+            p.setInt(1, fileId);
+            try (ResultSet r = p.executeQuery()) {
+                if (!r.next()) throw new RuntimeException();
+                return new String[]{ r.getString(1), r.getString(2), r.getString(3) };
             }
-
         } catch (SQLException e) {
-            throw new RuntimeException("Failed to fetch file metadata", e);
+            throw new RuntimeException(e);
         }
     }
 
-    public ResultSet getFilesByDirectoryId(int directoryId, String search, String mimeTypeFilter, String sortBy) {
-        StringBuilder sql = new StringBuilder("""
-        SELECT
-            file_id,
-            file_name,
-            file_description,
-            size,
-            mime_type,
-            created_at
-        FROM files
-        WHERE directory_id = ?
+    public List<FileEntry> getFilesByDirectoryId(
+            int dirId, String search, String mime, String sort
+    ) {
+
+        StringBuilder q = new StringBuilder("""
+            SELECT file_id, file_name, file_description,
+                   size, mime_type, created_at
+            FROM files WHERE directory_id = ?
         """);
 
-        if (search != null && !search.trim().isEmpty()) {
-            sql.append(" AND (LOWER(file_name) LIKE ? OR LOWER(file_description) LIKE ?)");
-        }
+        if (search != null && !search.isBlank())
+            q.append(" AND (LOWER(file_name) LIKE ? OR LOWER(file_description) LIKE ?)");
+        if (mime != null && !mime.isBlank())
+            q.append(" AND mime_type LIKE ?");
 
-        if (mimeTypeFilter != null && !mimeTypeFilter.trim().isEmpty()) {
-            sql.append(" AND mime_type LIKE ?");
-        }
+        q.append(" ORDER BY ")
+                .append("size".equals(sort) ? "size DESC" :
+                        "file_name".equals(sort) ? "file_name ASC" :
+                                "created_at DESC");
 
-        switch (sortBy) {
-            case "file_name":
-                sql.append(" ORDER BY file_name ASC");
-                break;
-            case "size":
-                sql.append(" ORDER BY size DESC");
-                break;
-            default:
-                sql.append(" ORDER BY created_at DESC");
-                break;
-        }
+        try (Connection c = ds.getConnection();
+             PreparedStatement p = c.prepareStatement(q.toString())) {
 
-        try {
-            PreparedStatement ps = conn.prepareStatement(sql.toString());
-            int paramIndex = 1;
+            int i = 1;
+            p.setInt(i++, dirId);
 
-            ps.setInt(paramIndex++, directoryId);
-
-            if (search != null && !search.trim().isEmpty()) {
-                String searchPattern = "%" + search.toLowerCase() + "%";
-                ps.setString(paramIndex++, searchPattern);
-                ps.setString(paramIndex++, searchPattern);
+            if (search != null && !search.isBlank()) {
+                String s = "%" + search.toLowerCase() + "%";
+                p.setString(i++, s);
+                p.setString(i++, s);
             }
 
-            if (mimeTypeFilter != null && !mimeTypeFilter.trim().isEmpty()) {
-                ps.setString(paramIndex++, mimeTypeFilter + "%");
+            if (mime != null && !mime.isBlank())
+                p.setString(i++, mime + "%");
+
+            List<FileEntry> out = new ArrayList<>();
+            try (ResultSet r = p.executeQuery()) {
+                while (r.next())
+                    out.add(new FileEntry(
+                            r.getInt(1), r.getString(2), r.getString(3),
+                            r.getLong(4), r.getString(5),
+                            r.getObject(6, OffsetDateTime.class)
+                    ));
             }
+            return out;
 
-            return ps.executeQuery();
         } catch (SQLException e) {
-            throw new RuntimeException("Failed to fetch filtered files for directory", e);
-        }
-    }
-
-    public ResultSet getAllDirectories() {
-        String sql = """
-        SELECT
-            directory_id,
-            path,
-            created_at,
-            (SELECT COUNT(*) FROM files WHERE directory_id = directories.directory_id) as file_count
-        FROM directories
-        ORDER BY path ASC
-        """;
-
-        try {
-            PreparedStatement ps = conn.prepareStatement(sql);
-            return ps.executeQuery();
-        } catch (SQLException e) {
-            throw new RuntimeException("Failed to fetch directories", e);
-        }
-    }
-
-    public ResultSet getDirectoryById(int directoryId) {
-        String sql = """
-        SELECT
-            directory_id,
-            path,
-            created_at,
-            (SELECT COUNT(*) FROM files WHERE directory_id = directories.directory_id) as file_count
-        FROM directories
-        WHERE directory_id = ?
-        """;
-
-        try {
-            PreparedStatement ps = conn.prepareStatement(sql);
-            ps.setInt(1, directoryId);
-            return ps.executeQuery();
-        } catch (SQLException e) {
-            throw new RuntimeException("Failed to fetch directory", e);
-        }
-    }
-
-    public int createDirectory(String path) throws SQLException {
-        String sql = """
-        INSERT INTO directories (path)
-        VALUES (?)
-        ON CONFLICT (path) DO UPDATE SET path = EXCLUDED.path
-        RETURNING directory_id
-        """;
-
-        try (PreparedStatement ps = conn.prepareStatement(sql)) {
-            ps.setString(1, path);
-            try (ResultSet rs = ps.executeQuery()) {
-                if (rs.next()) {
-                    return rs.getInt("directory_id");
-                }
-                throw new SQLException("Failed to get directory ID");
-            }
+            throw new RuntimeException(e);
         }
     }
 
     public boolean deleteFile(int fileId) throws SQLException {
-        String sql = """
-        DELETE FROM files
-        WHERE file_id = ?
-        """;
-
-        try (PreparedStatement ps = conn.prepareStatement(sql)) {
-            ps.setInt(1, fileId);
-            int rowsAffected = ps.executeUpdate();
-            return rowsAffected > 0;
+        try (Connection c = ds.getConnection();
+             PreparedStatement p = c.prepareStatement("DELETE FROM files WHERE file_id = ?")) {
+            p.setInt(1, fileId);
+            return p.executeUpdate() > 0;
         }
     }
 
-    public ResultSet getUniqueOriginalFilesFromPartials(int directoryId, String search) {
-        StringBuilder sql = new StringBuilder("""
-            SELECT DISTINCT 
-                original_filename,
-                mime_type,
-                directory_id,
-                MAX(created_at) as created_at,
-                SUM(part_size) as size,
-                MAX(file_description) as file_description
-            FROM file_partials
-            WHERE directory_id = ?
-        """);
+    public List<DirectoryEntry> getAllDirectories() {
+        String sql = """
+            SELECT d.directory_id, d.path, d.created_at,
+                   COUNT(f.file_id)
+            FROM directories d
+            LEFT JOIN files f USING (directory_id)
+            GROUP BY d.directory_id
+            ORDER BY d.path
+        """;
 
-        if (search != null && !search.trim().isEmpty()) {
-            sql.append(" AND LOWER(original_filename) LIKE ?");
+        try (Connection c = ds.getConnection();
+             PreparedStatement p = c.prepareStatement(sql);
+             ResultSet r = p.executeQuery()) {
+
+            List<DirectoryEntry> out = new ArrayList<>();
+            while (r.next())
+                out.add(new DirectoryEntry(
+                        r.getInt(1), r.getString(2),
+                        r.getObject(3, OffsetDateTime.class),
+                        r.getInt(4)
+                ));
+            return out;
+
+        } catch (SQLException e) {
+            throw new RuntimeException(e);
         }
+    }
 
-        sql.append("""
-            GROUP BY original_filename, mime_type, directory_id
-            ORDER BY original_filename ASC
-        """);
+    public DirectoryEntry getDirectoryById(int id) {
+        String sql = """
+            SELECT d.directory_id, d.path, d.created_at,
+                   COUNT(f.file_id)
+            FROM directories d
+            LEFT JOIN files f USING (directory_id)
+            WHERE d.directory_id = ?
+            GROUP BY d.directory_id
+        """;
 
-        try {
-            PreparedStatement ps = conn.prepareStatement(sql.toString());
-            int paramIndex = 1;
-            ps.setInt(paramIndex++, directoryId);
+        try (Connection c = ds.getConnection();
+             PreparedStatement p = c.prepareStatement(sql)) {
 
-            if (search != null && !search.trim().isEmpty()) {
-                ps.setString(paramIndex++, "%" + search.toLowerCase() + "%");
+            p.setInt(1, id);
+            try (ResultSet r = p.executeQuery()) {
+                if (!r.next()) throw new RuntimeException();
+                return new DirectoryEntry(
+                        r.getInt(1), r.getString(2),
+                        r.getObject(3, OffsetDateTime.class),
+                        r.getInt(4)
+                );
             }
 
-            return ps.executeQuery();
         } catch (SQLException e) {
-            throw new RuntimeException("Failed to fetch unique original files from partials", e);
+            throw new RuntimeException(e);
+        }
+    }
+
+    public int createDirectory(String path) throws SQLException {
+        try (Connection c = ds.getConnection();
+             PreparedStatement p = c.prepareStatement("""
+                 INSERT INTO directories (path)
+                 VALUES (?)
+                 ON CONFLICT (path) DO UPDATE SET path = EXCLUDED.path
+                 RETURNING directory_id
+             """)) {
+
+            p.setString(1, path);
+            try (ResultSet r = p.executeQuery()) {
+                r.next();
+                return r.getInt(1);
+            }
         }
     }
 
     public boolean deleteDirectory(int directoryId) throws SQLException {
-        String checkSql = """
-        SELECT COUNT(*) as file_count
-        FROM files
-        WHERE directory_id = ?
-        """;
+        if (directoryId == 1) throw new SQLException();
 
-        try (PreparedStatement checkPs = conn.prepareStatement(checkSql)) {
-            checkPs.setInt(1, directoryId);
-            try (ResultSet rs = checkPs.executeQuery()) {
-                if (rs.next() && rs.getInt("file_count") > 0) {
-                    throw new SQLException("Cannot delete directory: contains files");
+        try (Connection c = ds.getConnection()) {
+            try (PreparedStatement check = c.prepareStatement(
+                    "SELECT COUNT(*) FROM files WHERE directory_id = ?")) {
+                check.setInt(1, directoryId);
+                try (ResultSet r = check.executeQuery()) {
+                    r.next();
+                    if (r.getInt(1) > 0) throw new SQLException();
                 }
             }
-        }
 
-        if (directoryId == 1) {
-            throw new SQLException("Cannot delete root directory");
-        }
-
-        String deleteSql = """
-        DELETE FROM directories
-        WHERE directory_id = ?
-        """;
-
-        try (PreparedStatement deletePs = conn.prepareStatement(deleteSql)) {
-            deletePs.setInt(1, directoryId);
-            int rowsAffected = deletePs.executeUpdate();
-            return rowsAffected > 0;
-        }
-    }
-
-    public long recordFilePartial(String channelId, String messageId, int directoryId, 
-                                 String partName, int partNumber, long partSize, 
-                                 String originalFilename, String description, String mimeType) throws SQLException {
-        String sql = """
-        INSERT INTO file_partials (
-            disc_channel_id,
-            disc_message_id,
-            directory_id,
-            part_name,
-            part_number,
-            part_size,
-            original_filename,
-            file_description,
-            mime_type,
-            uploaded_via_webhook
-        )
-        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-        RETURNING partial_id
-        """;
-
-        try (PreparedStatement ps = conn.prepareStatement(sql)) {
-            ps.setString(1, channelId);
-            ps.setString(2, messageId);
-            ps.setInt(3, directoryId);
-            ps.setString(4, partName);
-            ps.setInt(5, partNumber);
-            ps.setLong(6, partSize);
-            ps.setString(7, originalFilename);
-            ps.setString(8, description);
-            ps.setString(9, mimeType);
-            ps.setBoolean(10, true);
-
-            try (ResultSet rs = ps.executeQuery()) {
-                if (rs.next()) {
-                    return rs.getLong("partial_id");
-                }
-                throw new SQLException("Failed to get partial ID");
+            try (PreparedStatement del = c.prepareStatement(
+                    "DELETE FROM directories WHERE directory_id = ?")) {
+                del.setInt(1, directoryId);
+                return del.executeUpdate() > 0;
             }
         }
     }
 
-    public boolean checkPartialExists(String partName, int directoryId) throws SQLException {
+    public long recordFilePartial(
+            String channelId, String messageId, int dirId,
+            String partName, int partNumber, long partSize,
+            String original, String desc, String mime
+    ) throws SQLException {
+
         String sql = """
-        SELECT COUNT(*) as count
-        FROM file_partials
-        WHERE part_name = ? AND directory_id = ?
+            INSERT INTO file_partials
+            (disc_channel_id, disc_message_id, directory_id,
+             part_name, part_number, part_size,
+             original_filename, file_description, mime_type,
+             uploaded_via_webhook)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, true)
+            RETURNING partial_id
         """;
 
-        try (PreparedStatement ps = conn.prepareStatement(sql)) {
-            ps.setString(1, partName);
-            ps.setInt(2, directoryId);
-            try (ResultSet rs = ps.executeQuery()) {
-                if (rs.next()) {
-                    return rs.getInt("count") > 0;
-                }
-                return false;
+        try (Connection c = ds.getConnection();
+             PreparedStatement p = c.prepareStatement(sql)) {
+
+            p.setString(1, channelId);
+            p.setString(2, messageId);
+            p.setInt(3, dirId);
+            p.setString(4, partName);
+            p.setInt(5, partNumber);
+            p.setLong(6, partSize);
+            p.setString(7, original);
+            p.setString(8, desc);
+            p.setString(9, mime);
+
+            try (ResultSet r = p.executeQuery()) {
+                r.next();
+                return r.getLong(1);
             }
         }
     }
 
-    public boolean deleteFilePartials(String originalFilename, int directoryId) throws SQLException {
-        String sql = """
-        DELETE FROM file_partials
-        WHERE original_filename = ? AND directory_id = ?
-        """;
-
-        try (PreparedStatement ps = conn.prepareStatement(sql)) {
-            ps.setString(1, originalFilename);
-            ps.setInt(2, directoryId);
-            int rowsAffected = ps.executeUpdate();
-            return rowsAffected > 0;
+    public boolean checkPartialExists(String partName, int dirId) throws SQLException {
+        try (Connection c = ds.getConnection();
+             PreparedStatement p = c.prepareStatement(
+                     "SELECT COUNT(*) FROM file_partials WHERE part_name = ? AND directory_id = ?")) {
+            p.setString(1, partName);
+            p.setInt(2, dirId);
+            try (ResultSet r = p.executeQuery()) {
+                r.next();
+                return r.getInt(1) > 0;
+            }
         }
     }
 
-    public ResultSet getFilePartialsByOriginalFilename(String originalFilename, int directoryId) {
+    public boolean deleteFilePartials(String original, int dirId) throws SQLException {
+        try (Connection c = ds.getConnection();
+             PreparedStatement p = c.prepareStatement(
+                     "DELETE FROM file_partials WHERE original_filename = ? AND directory_id = ?")) {
+            p.setString(1, original);
+            p.setInt(2, dirId);
+            return p.executeUpdate() > 0;
+        }
+    }
+
+    public List<FilePartialEntry> getFilePartialsByOriginalFilename(String original, int dirId) {
         String sql = """
-        SELECT
-            partial_id,
-            disc_channel_id,
-            disc_message_id,
-            part_name,
-            part_number,
-            part_size,
-            original_filename,
-            mime_type,
-            uploaded_via_webhook,
-            created_at
-        FROM file_partials
-        WHERE original_filename = ? AND directory_id = ?
-        ORDER BY part_number ASC
+            SELECT partial_id, disc_channel_id, disc_message_id,
+                   part_name, part_number, part_size,
+                   original_filename, mime_type,
+                   uploaded_via_webhook, created_at
+            FROM file_partials
+            WHERE original_filename = ? AND directory_id = ?
+            ORDER BY part_number
         """;
 
-        try {
-            PreparedStatement ps = conn.prepareStatement(sql);
-            ps.setString(1, originalFilename);
-            ps.setInt(2, directoryId);
-            return ps.executeQuery();
+        try (Connection c = ds.getConnection();
+             PreparedStatement p = c.prepareStatement(sql)) {
+
+            p.setString(1, original);
+            p.setInt(2, dirId);
+
+            List<FilePartialEntry> out = new ArrayList<>();
+            try (ResultSet r = p.executeQuery()) {
+                while (r.next())
+                    out.add(new FilePartialEntry(
+                            r.getLong(1), r.getString(2), r.getString(3),
+                            r.getString(4), r.getInt(5), r.getLong(6),
+                            r.getString(7), r.getString(8),
+                            r.getBoolean(9),
+                            r.getObject(10, OffsetDateTime.class)
+                    ));
+            }
+            return out;
+
         } catch (SQLException e) {
-            throw new RuntimeException("Failed to fetch file partials", e);
+            throw new RuntimeException(e);
         }
     }
 
+    public List<PartialGroupEntry> getUniqueOriginalFilesFromPartials(int dirId, String search) {
+        StringBuilder q = new StringBuilder("""
+            SELECT original_filename, mime_type, directory_id,
+                   MAX(created_at), SUM(part_size), MAX(file_description)
+            FROM file_partials
+            WHERE directory_id = ?
+        """);
+
+        if (search != null && !search.isBlank())
+            q.append(" AND LOWER(original_filename) LIKE ?");
+
+        q.append(" GROUP BY original_filename, mime_type, directory_id ORDER BY original_filename");
+
+        try (Connection c = ds.getConnection();
+             PreparedStatement p = c.prepareStatement(q.toString())) {
+
+            int i = 1;
+            p.setInt(i++, dirId);
+            if (search != null && !search.isBlank())
+                p.setString(i++, "%" + search.toLowerCase() + "%");
+
+            List<PartialGroupEntry> out = new ArrayList<>();
+            try (ResultSet r = p.executeQuery()) {
+                while (r.next())
+                    out.add(new PartialGroupEntry(
+                            r.getString(1),
+                            r.getString(2),
+                            r.getInt(3),
+                            r.getObject(4, OffsetDateTime.class),
+                            r.getLong(5),
+                            r.getString(6)
+                    ));
+            }
+            return out;
+
+        } catch (SQLException e) {
+            throw new RuntimeException(e);
+        }
+    }
 }

@@ -4,6 +4,7 @@ import net.dv8tion.jda.api.entities.Message;
 
 import java.sql.ResultSet;
 import java.sql.SQLException;
+import java.util.List;
 
 
 public class FileSystem {
@@ -32,29 +33,25 @@ public class FileSystem {
         }
     }
 
-    public ResultSet getFilesByDirectoryId(int directoryId, String search, String mimeTypeFilter, String sortBy) {
+    public List<Database.FileEntry> getFilesByDirectoryId(int directoryId, String search, String mimeTypeFilter, String sortBy) {
         return database.getFilesByDirectoryId(directoryId, search, mimeTypeFilter, sortBy);
     }
 
     public int findOrCreateDirectory(String path) throws SQLException {
-        ResultSet rs = getAllDirectories();
-        while (rs.next()) {
-            if (path.equals(rs.getString("path"))) {
-                int id = rs.getInt("directory_id");
-                rs.close();
-                return id;
+        for (Database.DirectoryEntry d : getAllDirectories()) {
+            if (path.equals(d.path())) {
+                return d.directoryId();
             }
         }
-        rs.close();
-
         return createDirectory(path);
     }
 
-    public ResultSet getAllDirectories() {
+
+    public List<Database.DirectoryEntry> getAllDirectories() {
         return database.getAllDirectories();
     }
 
-    public ResultSet getDirectoryById(int directoryId) {
+    public Database.DirectoryEntry getDirectoryById(int directoryId) {
         return database.getDirectoryById(directoryId);
     }
 
@@ -77,11 +74,11 @@ public class FileSystem {
                                         partNumber, partSize, originalFilename, description, mimeType);
     }
 
-    public ResultSet getFilePartialsByOriginalFilename(String originalFilename, int directoryId) {
+    public List<Database.FilePartialEntry> getFilePartialsByOriginalFilename(String originalFilename, int directoryId) {
         return database.getFilePartialsByOriginalFilename(originalFilename, directoryId);
     }
 
-    public ResultSet getGroupedPartials(int directoryId, String search) {
+    public List<Database.PartialGroupEntry> getGroupedPartials(int directoryId, String search) {
         return database.getUniqueOriginalFilesFromPartials(directoryId, search);
     }
 
