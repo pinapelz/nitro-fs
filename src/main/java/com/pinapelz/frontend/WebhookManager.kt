@@ -152,14 +152,4 @@ class WebhookManager(webhooksFilePath: String) {
             return WebhookUploadResult(false, error = "Unexpected error: ${e.message}")
         }
     }
-
-    fun getWebhookCount(): Int = webhooks.size
-
-    fun getAvailableWebhookCount(): Long {
-        val currentTime = System.currentTimeMillis()
-        return webhooks.count { webhook ->
-            val lastUsed = webhookCooldowns[webhook] ?: 0
-            (currentTime - lastUsed) >= cooldownPeriodMs
-        }.toLong()
-    }
 }

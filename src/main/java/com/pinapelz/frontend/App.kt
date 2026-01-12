@@ -372,7 +372,12 @@ fun validateDirectoryName(path: String): String? {
     if (path.length !in 1..100) {
         return "Directory name must be 1-100 characters long"
     }
-    val invalidChars = Regex("[<>:\"/\\\\|?*\\x00-\\x1f]")
+
+    if (!path.all { it.code <= 127 }) {
+        return "Directory name can only contain ASCII characters"
+    }
+
+    val invalidChars = Regex("[<>:\"/\\\\|?*\\x00-\\x1f#%&+@\\[\\]{}^`~;=']")
     if (invalidChars.containsMatchIn(path)) {
         return "Directory name contains invalid characters"
     }
