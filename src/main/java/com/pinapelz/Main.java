@@ -31,8 +31,9 @@ public class Main
     }
 
     public static void main(String[] args) throws Exception{
+        String pathToWebhooks = readSetting("WEBHOOKS_TXT");
         JDA jda = startBot();
-        startFrontend(new Retriever(jda), fileSystem);
+        startFrontend(new Retriever(jda), fileSystem, pathToWebhooks);
     }
 
 

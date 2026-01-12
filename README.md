@@ -14,3 +14,7 @@ This removes the hassle of splitting and merging lots of smaller files, or data 
   - Allows you to upload from any device that can access to Discord, no need to connect to Web/UI for this
 - Postgres as the index
   - Doesn't store metadata in Discord messages to allow for faster retrieval
+
+# Setup
+1. Create `.env` based `.env.template` on
+2. `WEBHOOKS_TXT` is a path to a text file containing webhooks, separated by newlines

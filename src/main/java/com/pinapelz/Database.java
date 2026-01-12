@@ -7,6 +7,7 @@ import java.io.IOException;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.sql.*;
+import java.sql.Types;
 import java.util.Properties;
 
 public class Database {
@@ -214,6 +215,43 @@ public class Database {
         }
     }
 
+    public ResultSet getUniqueOriginalFilesFromPartials(int directoryId, String search) {
+        StringBuilder sql = new StringBuilder("""
+            SELECT DISTINCT 
+                original_filename,
+                mime_type,
+                directory_id,
+                MAX(created_at) as created_at,
+                SUM(part_size) as size,
+                MAX(file_description) as file_description
+            FROM file_partials
+            WHERE directory_id = ?
+        """);
+
+        if (search != null && !search.trim().isEmpty()) {
+            sql.append(" AND LOWER(original_filename) LIKE ?");
+        }
+
+        sql.append("""
+            GROUP BY original_filename, mime_type, directory_id
+            ORDER BY original_filename ASC
+        """);
+
+        try {
+            PreparedStatement ps = conn.prepareStatement(sql.toString());
+            int paramIndex = 1;
+            ps.setInt(paramIndex++, directoryId);
+
+            if (search != null && !search.trim().isEmpty()) {
+                ps.setString(paramIndex++, "%" + search.toLowerCase() + "%");
+            }
+
+            return ps.executeQuery();
+        } catch (SQLException e) {
+            throw new RuntimeException("Failed to fetch unique original files from partials", e);
+        }
+    }
+
     public boolean deleteDirectory(int directoryId) throws SQLException {
         String checkSql = """
         SELECT COUNT(*) as file_count
@@ -243,6 +281,108 @@ public class Database {
             deletePs.setInt(1, directoryId);
             int rowsAffected = deletePs.executeUpdate();
             return rowsAffected > 0;
+        }
+    }
+
+    public long recordFilePartial(String channelId, String messageId, int directoryId, 
+                                 String partName, int partNumber, long partSize, 
+                                 String originalFilename, String description, String mimeType) throws SQLException {
+        String sql = """
+        INSERT INTO file_partials (
+            disc_channel_id,
+            disc_message_id,
+            directory_id,
+            part_name,
+            part_number,
+            part_size,
+            original_filename,
+            file_description,
+            mime_type,
+            uploaded_via_webhook
+        )
+        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+        RETURNING partial_id
+        """;
+
+        try (PreparedStatement ps = conn.prepareStatement(sql)) {
+            ps.setString(1, channelId);
+            ps.setString(2, messageId);
+            ps.setInt(3, directoryId);
+            ps.setString(4, partName);
+            ps.setInt(5, partNumber);
+            ps.setLong(6, partSize);
+            ps.setString(7, originalFilename);
+            ps.setString(8, description);
+            ps.setString(9, mimeType);
+            ps.setBoolean(10, true);
+
+            try (ResultSet rs = ps.executeQuery()) {
+                if (rs.next()) {
+                    return rs.getLong("partial_id");
+                }
+                throw new SQLException("Failed to get partial ID");
+            }
+        }
+    }
+
+    public boolean checkPartialExists(String partName, int directoryId) throws SQLException {
+        String sql = """
+        SELECT COUNT(*) as count
+        FROM file_partials
+        WHERE part_name = ? AND directory_id = ?
+        """;
+
+        try (PreparedStatement ps = conn.prepareStatement(sql)) {
+            ps.setString(1, partName);
+            ps.setInt(2, directoryId);
+            try (ResultSet rs = ps.executeQuery()) {
+                if (rs.next()) {
+                    return rs.getInt("count") > 0;
+                }
+                return false;
+            }
+        }
+    }
+
+    public boolean deleteFilePartials(String originalFilename, int directoryId) throws SQLException {
+        String sql = """
+        DELETE FROM file_partials
+        WHERE original_filename = ? AND directory_id = ?
+        """;
+
+        try (PreparedStatement ps = conn.prepareStatement(sql)) {
+            ps.setString(1, originalFilename);
+            ps.setInt(2, directoryId);
+            int rowsAffected = ps.executeUpdate();
+            return rowsAffected > 0;
+        }
+    }
+
+    public ResultSet getFilePartialsByOriginalFilename(String originalFilename, int directoryId) {
+        String sql = """
+        SELECT
+            partial_id,
+            disc_channel_id,
+            disc_message_id,
+            part_name,
+            part_number,
+            part_size,
+            original_filename,
+            mime_type,
+            uploaded_via_webhook,
+            created_at
+        FROM file_partials
+        WHERE original_filename = ? AND directory_id = ?
+        ORDER BY part_number ASC
+        """;
+
+        try {
+            PreparedStatement ps = conn.prepareStatement(sql);
+            ps.setString(1, originalFilename);
+            ps.setInt(2, directoryId);
+            return ps.executeQuery();
+        } catch (SQLException e) {
+            throw new RuntimeException("Failed to fetch file partials", e);
         }
     }
 

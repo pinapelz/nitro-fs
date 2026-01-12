@@ -5,8 +5,22 @@ import com.pinapelz.Retriever
 import com.pinapelz.FileSystem
 import java.sql.ResultSet
 import java.text.SimpleDateFormat
+import java.io.File
+import java.net.URLEncoder
 
-fun startFrontend(retriever: Retriever, fileSystem: FileSystem) {
+fun startFrontend(retriever: Retriever, fileSystem: FileSystem, webhooksFile: String) {
+    // Initialize WebhookManager if webhooks file exists
+    val webhookManager = if (File(webhooksFile).exists()) {
+        try {
+            WebhookManager(webhooksFile)
+        } catch (e: Exception) {
+            println("Warning: Failed to initialize webhook manager: ${e.message}")
+            null
+        }
+    } else {
+        println("Warning: Webhooks file not found: $webhooksFile")
+        null
+    }
     val app = Javalin.create{};
 
     app.get("/") { ctx ->
@@ -16,6 +30,35 @@ fun startFrontend(retriever: Retriever, fileSystem: FileSystem) {
 
     app.get("/splitter") { ctx ->
         ctx.html(generateFileSplitterHtml())
+    }
+
+    /*
+    {
+  "success": true,
+  "parts": [
+    {
+      "id": "unique-part-id-1",
+      "name": "filename.part001.nitro",
+      "size": 26214400
+    },
+    {
+      "id": "unique-part-id-2",
+      "name": "filename.part002.nitro",
+      "size": 26214400
+    },
+    {
+      "id": "unique-part-id-3",
+      "name": "filename.part003.nitro",
+      "size": 15728640
+    }
+  ]
+}
+
+     */
+    app.post("/api/split") { ctx ->
+        val manager = MultipartFileManager(fileSystem, webhookManager)
+        val result = manager.handleSplitRequest(ctx)
+        ctx.json(result)
     }
 
     app.get("/api/directories") { ctx ->
@@ -75,6 +118,21 @@ fun startFrontend(retriever: Retriever, fileSystem: FileSystem) {
             ))
         }
         rs.close()
+
+        val partialsRs = fileSystem.getGroupedPartials(directoryId, search)
+        while (partialsRs.next()) {
+            val originalName = partialsRs.getString("original_filename")
+            val partialDescription = partialsRs.getString("file_description")
+            files.add(mapOf(
+                "id" to "partial:$originalName|$directoryId",
+                "name" to originalName,
+                "description" to (partialDescription ?: ""),
+                "size" to formatFileSize(partialsRs.getLong("size")),
+                "mimeType" to (partialsRs.getString("mime_type") ?: "application/octet-stream"),
+                "created" to dateFormat.format(partialsRs.getTimestamp("created_at"))
+            ))
+        }
+        partialsRs.close()
 
         val html = generateFileTableHtml(files, search, mimeTypeFilter)
         ctx.html(html)
@@ -138,17 +196,25 @@ fun startFrontend(retriever: Retriever, fileSystem: FileSystem) {
     }
 
     app.delete("/api/files/{id}") { ctx ->
-        val fileId = ctx.pathParam("id").toIntOrNull()
-        if (fileId == null) {
-            ctx.status(400).json(mapOf(
-                "success" to false,
-                "message" to "Invalid file ID"
-            ))
-            return@delete
-        }
+        val idStr = ctx.pathParam("id")
 
         try {
-            val deleted = fileSystem.deleteFile(fileId)
+            val deleted = if (idStr.startsWith("partial:")) {
+                val data = idStr.substring("partial:".length).split("|")
+                val filename = data[0]
+                val dirId = data[1].toInt()
+                fileSystem.deleteFilePartials(filename, dirId)
+            } else {
+                val fileId = idStr.toIntOrNull()
+                if (fileId == null) {
+                    ctx.status(400).json(mapOf(
+                        "success" to false,
+                        "message" to "Invalid file ID"
+                    ))
+                    return@delete
+                }
+                fileSystem.deleteFile(fileId)
+            }
             if (deleted) {
                 ctx.json(mapOf(
                     "success" to true,
@@ -199,12 +265,105 @@ fun startFrontend(retriever: Retriever, fileSystem: FileSystem) {
         }
     }
 
+    app.get("/api/reassemble") { ctx ->
+        val filename = ctx.queryParam("filename") ?: throw io.javalin.http.BadRequestResponse("filename required")
+        val dirId = ctx.queryParam("dir")?.toIntOrNull() ?: throw io.javalin.http.BadRequestResponse("dir id required")
+
+        val rs = fileSystem.getFilePartialsByOriginalFilename(filename, dirId)
+        data class PartInfo(val channelId: String, val messageId: String, val partName: String, val isWebhook: Boolean)
+        val parts = mutableListOf<PartInfo>()
+        var mimeType = "application/octet-stream"
+
+        while (rs.next()) {
+            parts.add(PartInfo(
+                rs.getString("disc_channel_id"),
+                rs.getString("disc_message_id"),
+                rs.getString("part_name"),
+                rs.getBoolean("uploaded_via_webhook")
+            ))
+            mimeType = rs.getString("mime_type") ?: mimeType
+        }
+        rs.close()
+
+        if (parts.isEmpty()) {
+            ctx.status(404).result("No parts found for $filename")
+            return@get
+        }
+
+        ctx.header("Content-Disposition", "attachment; filename=\"$filename\"")
+        ctx.contentType(mimeType)
+
+        ctx.async {
+            try {
+                val outputStream = ctx.res().outputStream
+                for ((index, part) in parts.withIndex()) {
+                    var success = false
+                    var lastError: Exception? = null
+                    for (attempt in 1..3) {
+                        try {
+                            val url = retriever.getFileUrl(part.channelId, part.messageId, part.partName, part.isWebhook)
+                            println("Fetching part ${index + 1}/${parts.size} from: $url (attempt $attempt)")
+
+                            val connection = java.net.URL(url).openConnection() as java.net.HttpURLConnection
+                            connection.requestMethod = "GET"
+                            connection.setRequestProperty("User-Agent", "Mozilla/5.0")
+                            connection.connectTimeout = 30000
+                            connection.readTimeout = 30000
+
+                            val responseCode = connection.responseCode
+                            if (responseCode == 200) {
+                                connection.inputStream.use { input ->
+                                    input.copyTo(outputStream)
+                                }
+                                println("Successfully fetched part ${index + 1}/${parts.size}")
+                                success = true
+                                break
+                            } else {
+                                println("HTTP $responseCode for part ${index + 1} on attempt $attempt")
+                                lastError = Exception("HTTP $responseCode: ${connection.responseMessage}")
+                                if (attempt < 3) Thread.sleep(1000 * attempt.toLong())
+                            }
+                        } catch (e: Exception) {
+                            println("Error fetching part ${index + 1} on attempt $attempt: ${e.message}")
+                            lastError = e
+                            if (attempt < 3) Thread.sleep(1000 * attempt.toLong())
+                        }
+                    }
+
+                    if (!success) {
+                        ctx.status(500)
+                        ctx.result("Error: Failed to retrieve part ${index + 1} after 3 attempts. ${lastError?.message}")
+                        return@async
+                    }
+                }
+                outputStream.flush()
+            } catch (e: Exception) {
+                println("Error during file reassembly: ${e.message}")
+                e.printStackTrace()
+            }
+        }
+    }
+
     app.get("/fetch") { ctx ->
-        val fileId = ctx.queryParam("fileId")
-        val fileMetadata = fileSystem.getFileById(Integer.parseInt(fileId));
-        print("Retrieving: " + fileMetadata.fileName)
-        ctx.redirect(retriever.getFileUrl(fileMetadata.channelId.toString(),
-            fileMetadata.messageId.toString(), fileMetadata.fileName));
+        val fileIdStr = ctx.queryParam("fileId") ?: ""
+        if (fileIdStr.startsWith("partial:")) {
+            val data = fileIdStr.substring("partial:".length).split("|")
+            val filename = data[0]
+            val dirId = data[1]
+            ctx.redirect("/api/reassemble?filename=${URLEncoder.encode(filename, "UTF-8")}&dir=$dirId")
+            return@get
+        }
+
+        try {
+            val fileMetadata = fileSystem.getFileById(Integer.parseInt(fileIdStr));
+            println("Retrieving: " + fileMetadata.fileName)
+            val fileUrl = retriever.getFileUrl(fileMetadata.channelId.toString(),
+                fileMetadata.messageId.toString(), fileMetadata.fileName)
+            ctx.redirect(fileUrl)
+        } catch (e: Exception) {
+            println("Failed to retrieve file: ${e.message}")
+            ctx.status(404).result("Error: File not found or has been deleted from Discord. ${e.message}")
+        }
     }
     app.start(7070)
 }

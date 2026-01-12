@@ -13,6 +13,10 @@ public class Retriever {
     }
 
     public String getFileUrl(String channelId, String messageId, String fileName) {
+        return getFileUrl(channelId, messageId, fileName, false);
+    }
+
+    public String getFileUrl(String channelId, String messageId, String fileName, boolean isWebhookUpload) {
         TextChannel channel = jda.getTextChannelById(channelId);
         if (channel == null) {
             throw new RuntimeException("Channel not found or deleted");
@@ -23,7 +27,7 @@ public class Retriever {
 
         for (Message.Attachment file : message.getAttachments()) {
             if (file.getFileName().equals(fileName)) {
-                return file.getProxyUrl();
+                return isWebhookUpload ? file.getUrl() : file.getProxyUrl();
             }
         }
 

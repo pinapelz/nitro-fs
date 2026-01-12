@@ -567,16 +567,6 @@
         </header>
 
         <main class="main-content">
-            <div class="page-header">
-                <h1 class="page-title">
-                    <i class="fas fa-cut"></i>
-                    File Splitter
-                </h1>
-                <p class="page-description">
-                    For large files that won't fit into the upload limit
-                </p>
-            </div>
-
             <div class="splitter-container">
                 <div class="card">
                     <div class="card-header">
@@ -598,7 +588,7 @@
                             <div class="file-details">
                                 <h4 id="file-name">No file selected</h4>
                                 <div class="file-meta">
-                                    <span id="file-size">0 bytes</span> • 
+                                    <span id="file-size">0 bytes</span> •
                                     <span id="file-type">unknown</span>
                                 </div>
                             </div>
@@ -634,7 +624,7 @@
                             </div>
                             <div class="form-help" id="webhook-help" style="display: none; margin-top: 8px; padding: 8px 12px; background-color: rgba(88, 101, 242, 0.1); border: 1px solid #5865f2; border-radius: 4px;">
                                 <i class="fas fa-info-circle" style="margin-right: 6px; color: #5865f2;"></i>
-                                Webhook mode is active. File will be split into exactly 10MB parts for Discord upload compatibility.
+                                Webhook mode is active. File will be split into exactly 10MB parts for Discord and then upload automatically via webhooks.txt
                             </div>
                         </div>
 
@@ -663,6 +653,12 @@
                             <div class="form-help">Parts will be named: [prefix].part001.nitro, [prefix].part002.nitro, etc.</div>
                         </div>
 
+                        <div class="form-group">
+                            <label for="file-description" class="form-label">Description (optional)</label>
+                            <input type="text" class="form-input" id="file-description" placeholder="Enter a description for this file">
+                            <div class="form-help">This description will be stored with the uploaded file parts.</div>
+                        </div>
+
                         <button type="submit" class="btn btn-primary" id="split-button" disabled>
                             <i class="fas fa-cut"></i>
                             Split File
@@ -670,12 +666,8 @@
                     </form>
 
                     <div class="progress-container" id="progress-container">
-                        <div class="progress-bar">
-                            <div class="progress-fill" id="progress-fill"></div>
-                        </div>
                         <div class="progress-text">
-                            <span id="progress-status">Processing...</span>
-                            <span id="progress-percent">0%</span>
+                            <span id="progress-status">Processing... You may leave this page, uploads will complete</span>
                         </div>
                     </div>
                 </div>
@@ -740,23 +732,23 @@
 
         function handleFileSelect(file) {
             currentFile = file;
-            
+
             // Update file display
             document.getElementById('file-name').textContent = file.name;
             document.getElementById('file-size').textContent = formatFileSize(file.size);
             document.getElementById('file-type').textContent = file.type || 'unknown';
-            
+
             // Update file icon based on type
             const iconElement = document.getElementById('file-icon');
             iconElement.className = 'fas ' + getFileIcon(file.type) + ' file-icon';
-            
+
             // Auto-populate prefix if empty
             const prefixInput = document.getElementById('file-prefix');
             if (!prefixInput.value) {
                 const nameWithoutExt = file.name.replace(/\.[^/.]+$/, '');
                 prefixInput.value = nameWithoutExt;
             }
-            
+
             selectedFile.classList.add('visible');
             splitButton.disabled = false;
         }
@@ -785,7 +777,7 @@
             radio.addEventListener('change', (e) => {
                 const sizeConfig = document.getElementById('size-config');
                 const partsConfig = document.getElementById('parts-config');
-                
+
                 if (e.target.value === 'size') {
                     sizeConfig.style.display = 'block';
                     partsConfig.style.display = 'none';
@@ -803,21 +795,21 @@
 
         webhookCheckbox.addEventListener('change', (e) => {
             const webhookHelp = document.getElementById('webhook-help');
-            
+
             if (e.target.checked) {
                 partSizeInput.value = '10';
                 partSizeInput.disabled = true;
                 sizeUnitSelect.value = 'MB';
                 sizeUnitSelect.disabled = true;
-                
+
                 // Force split by size method
                 document.getElementById('split-by-size').checked = true;
                 document.getElementById('split-by-parts').disabled = true;
-                
+
                 // Show size config, hide parts config
                 document.getElementById('size-config').style.display = 'block';
                 document.getElementById('parts-config').style.display = 'none';
-                
+
                 // Show webhook help text
                 webhookHelp.style.display = 'block';
             } else {
@@ -825,7 +817,7 @@
                 partSizeInput.disabled = false;
                 sizeUnitSelect.disabled = false;
                 document.getElementById('split-by-parts').disabled = false;
-                
+
                 // Hide webhook help text
                 webhookHelp.style.display = 'none';
             }
@@ -834,7 +826,7 @@
         // Form submission
         splitForm.addEventListener('submit', async (e) => {
             e.preventDefault();
-            
+
             if (!currentFile) {
                 alert('Please select a file first');
                 return;
@@ -842,10 +834,10 @@
 
             const formData = new FormData();
             formData.append('file', currentFile);
-            
+
             const splitMethod = document.querySelector('input[name="split-method"]:checked').value;
             formData.append('split-method', splitMethod);
-            
+
             if (splitMethod === 'size') {
                 const partSize = document.getElementById('part-size').value;
                 const sizeUnit = document.getElementById('size-unit').value;
@@ -855,10 +847,12 @@
                 const numParts = document.getElementById('num-parts').value;
                 formData.append('num-parts', numParts);
             }
-            
+
             const prefix = document.getElementById('file-prefix').value;
+            const description = document.getElementById('file-description').value;
             const useWebhook = document.getElementById('upload-webhook').checked;
             formData.append('file-prefix', prefix);
+            formData.append('file-description', description);
             formData.append('part-extension', 'nitro');
             formData.append('use-webhook', useWebhook);
 
@@ -879,7 +873,7 @@
 
                 const result = await response.json();
                 displayResults(result);
-                
+
             } catch (error) {
                 alert('Error splitting file: ' + error.message);
             } finally {
@@ -890,7 +884,7 @@
 
         function displayResults(result) {
             const resultsContent = document.getElementById('results-content');
-            
+
             if (result.success && result.parts) {
                 let html = `
                     <div class="alert alert-success">
@@ -921,10 +915,10 @@
 
                 resultsContent.innerHTML = html;
                 resultsContainer.classList.add('visible');
-                
+
                 // Store part IDs for download all functionality
                 window.currentParts = result.parts;
-                
+
             } else {
                 resultsContent.innerHTML = `
                     <div class="alert alert-error">
@@ -953,15 +947,15 @@
             const progressFill = document.getElementById('progress-fill');
             const progressPercent = document.getElementById('progress-percent');
             const progressStatus = document.getElementById('progress-status');
-            
+
             let progress = 0;
             const interval = setInterval(() => {
                 progress += Math.random() * 15;
                 if (progress > 100) progress = 100;
-                
+
                 progressFill.style.width = progress + '%';
                 progressPercent.textContent = Math.round(progress) + '%';
-                
+
                 if (progress < 30) {
                     progressStatus.textContent = 'Reading file...';
                 } else if (progress < 70) {

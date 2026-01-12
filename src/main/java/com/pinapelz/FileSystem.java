@@ -69,4 +69,27 @@ public class FileSystem {
     public boolean deleteDirectory(int directoryId) throws SQLException {
         return database.deleteDirectory(directoryId);
     }
+
+    public long createFilePartial(String channelId, String messageId, int directoryId, 
+                                 String partName, int partNumber, long partSize, 
+                                 String originalFilename, String description, String mimeType) throws SQLException {
+        return database.recordFilePartial(channelId, messageId, directoryId, partName, 
+                                        partNumber, partSize, originalFilename, description, mimeType);
+    }
+
+    public ResultSet getFilePartialsByOriginalFilename(String originalFilename, int directoryId) {
+        return database.getFilePartialsByOriginalFilename(originalFilename, directoryId);
+    }
+
+    public ResultSet getGroupedPartials(int directoryId, String search) {
+        return database.getUniqueOriginalFilesFromPartials(directoryId, search);
+    }
+
+    public boolean deleteFilePartials(String originalFilename, int directoryId) throws SQLException {
+        return database.deleteFilePartials(originalFilename, directoryId);
+    }
+
+    public boolean checkPartialNameConstraint(String partName, int directoryId) throws SQLException {
+        return database.checkPartialExists(partName, directoryId);
+    }
 }
