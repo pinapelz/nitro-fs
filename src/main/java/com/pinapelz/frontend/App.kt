@@ -3,7 +3,6 @@ package com.pinapelz.frontend
 import io.javalin.Javalin
 import com.pinapelz.Retriever
 import com.pinapelz.FileSystem
-import java.text.SimpleDateFormat
 import java.io.File
 import java.net.URLEncoder
 import java.time.ZoneId
@@ -22,7 +21,7 @@ fun startFrontend(retriever: Retriever, fileSystem: FileSystem, webhooksFile: St
         println("Warning: Webhooks file not found: $webhooksFile")
         null
     }
-    val app = Javalin.create{};
+    val app = Javalin.create{}
 
     app.get("/") { ctx ->
         val directoryId = ctx.queryParam("dir")?.toIntOrNull() ?: 1
@@ -82,9 +81,6 @@ fun startFrontend(retriever: Retriever, fileSystem: FileSystem, webhooksFile: St
         val sortBy = ctx.queryParam("sortBy") ?: "created_at"
 
         val files = mutableListOf<Map<String, Any>>()
-        val dateFormat = SimpleDateFormat("yyyy-MM-dd HH:mm:ss")
-
-// regular files
         val fileEntries = fileSystem.getFilesByDirectoryId(
             directoryId,
             search,
@@ -298,13 +294,11 @@ fun startFrontend(retriever: Retriever, fileSystem: FileSystem, webhooksFile: St
                         try {
                             val url = retriever.getFileUrl(part.channelId, part.messageId, part.partName, part.isWebhook)
                             println("Fetching part ${index + 1}/${parts.size} from: $url (attempt $attempt)")
-
-                            val connection = java.net.URL(url).openConnection() as java.net.HttpURLConnection
+                            val connection = java.net.URI(url).toURL().openConnection() as java.net.HttpURLConnection
                             connection.requestMethod = "GET"
                             connection.setRequestProperty("User-Agent", "Mozilla/5.0")
                             connection.connectTimeout = 30000
                             connection.readTimeout = 30000
-
                             val responseCode = connection.responseCode
                             if (responseCode == 200) {
                                 connection.inputStream.use { input ->
@@ -350,7 +344,7 @@ fun startFrontend(retriever: Retriever, fileSystem: FileSystem, webhooksFile: St
         }
 
         try {
-            val fileMetadata = fileSystem.getFileById(Integer.parseInt(fileIdStr));
+            val fileMetadata = fileSystem.getFileById(Integer.parseInt(fileIdStr))
             println("Retrieving: " + fileMetadata.fileName)
             val fileUrl = retriever.getFileUrl(fileMetadata.channelId.toString(),
                 fileMetadata.messageId.toString(), fileMetadata.fileName)
