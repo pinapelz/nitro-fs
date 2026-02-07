@@ -224,7 +224,7 @@ class MultipartFileManager(
 
         when (config) {
             is SplitConfig.BySize -> {
-                val partSize = config.sizeInBytes - (16 * 1024);
+                val partSize = config.sizeInBytes - (16 * 1024)
                 val numParts = ceil(fileSize.toDouble() / partSize.toDouble()).toInt()
                 println("Splitting file: ${fileSize} bytes into ${numParts} parts of max ${partSize} bytes each")
 
@@ -247,7 +247,32 @@ class MultipartFileManager(
                 }
             }
 
-            is SplitConfig.ByParts -> { // TODO: stubbed not yet implemented
+            is SplitConfig.ByParts -> {
+                val partSize = fileSize / config.numParts
+                var remainingBytes = fileSize
+                var offset = 0L
+
+                uploadedFile.content().use { inputStream ->
+                    for (partId in 1..config.numParts) {
+                        val partName = "part_$partId"
+                        val partPath = workingDir.resolve(partName)
+
+                        val currentPartSize = if (partId == config.numParts) remainingBytes else partSize
+                        val partBytes = ByteArray(currentPartSize.toInt())
+                        inputStream.read(partBytes, 0, currentPartSize.toInt())
+
+                        Files.write(partPath, partBytes)
+                        partsMeta += FilePartMeta(
+                            id = partId.toString(),
+                            name = partName,
+                            size = currentPartSize,
+                            path = partPath
+                        )
+
+                        offset += currentPartSize
+                        remainingBytes -= currentPartSize
+                    }
+                }
             }
         }
         val metadata = SplitMetadata(

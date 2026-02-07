@@ -21,7 +21,7 @@ fun startFrontend(retriever: Retriever, fileSystem: FileSystem, webhooksFile: St
         println("Warning: Webhooks file not found: $webhooksFile")
         null
     }
-    val app = Javalin.create{}
+    val app = Javalin.create{};
 
     app.get("/") { ctx ->
         val directoryId = ctx.queryParam("dir")?.toIntOrNull() ?: 1
@@ -81,6 +81,7 @@ fun startFrontend(retriever: Retriever, fileSystem: FileSystem, webhooksFile: St
         val sortBy = ctx.queryParam("sortBy") ?: "created_at"
 
         val files = mutableListOf<Map<String, Any>>()
+
         val fileEntries = fileSystem.getFilesByDirectoryId(
             directoryId,
             search,
